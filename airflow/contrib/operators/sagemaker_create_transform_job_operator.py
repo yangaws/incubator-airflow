@@ -127,6 +127,6 @@ class SageMakerCreateTransformJobOperator(BaseOperator):
         if not response['ResponseMetadata']['HTTPStatusCode'] \
            == 200:
             raise AirflowException(
-                'Sagemaker transform Job creation failed: %s' % response)
+                'SageMaker transform Job creation failed: %s' % response)
         else:
             return response

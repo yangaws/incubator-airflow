@@ -149,29 +149,28 @@ class SageMakerHook(AwsHook):
         """
         return self.get_client_type('sagemaker', region_name=self.region_name)
 
-    def list_training_job(self, name_contains=None, status_equals=None):
+    def list_training_job(self, **kwargs):
         """
         List the training jobs associated with the given input
-        :param name_contains: A string in the training job name
-        :type name_contains: str
-        :param status_equals: 'InProgress'|'Completed'
-        |'Failed'|'Stopping'|'Stopped'
-        :return:dict
-        """
-        return self.conn.list_training_jobs(
-            NameContains=name_contains, StatusEquals=status_equals)
+        :param https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/sagemaker.html#SageMaker.Client.list_training_jobs
+        :return: A dict of training job summaries
+        """  # noqa
+        return self.conn.list_training_jobs(**kwargs)
 
-    def list_tuning_job(self, name_contains=None, status_equals=None):
+    def list_tuning_job(self, **kwargs):
         """
         List the tuning jobs associated with the given input
-        :param name_contains: A string in the training job name
-        :type name_contains: str
-        :param status_equals: 'InProgress'|'Completed'
-        |'Failed'|'Stopping'|'Stopped'
-        :return:dict
+        :param https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/sagemaker.html#SageMaker.Client.list_hyper_parameter_tuning_jobs
+        :return: A dict of hyperparamter tuning job summaries
+        """  # noqa
+        return self.conn.list_hyper_parameter_tuning_job(**kwargs)
+
+    def list_transform_job(self, **kwargs):
         """
-        return self.conn.list_hyper_parameter_tuning_job(
-            NameContains=name_contains, StatusEquals=status_equals)
+        :param https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/sagemaker.html#SageMaker.Client.list_transform_jobs
+        :return: A dict of transform job summaries
+        """  # noqa
+        return self.conn.list_transform_jobs(**kwargs)
 
     def create_training_job(self, training_job_config, wait_for_completion=True):
         """
@@ -180,7 +179,7 @@ class SageMakerHook(AwsHook):
         :type training_job_config: dict
         :param wait_for_completion: if the program should keep running until job finishes
         :type wait_for_completion: bool
-        :return: A dict that contains ARN of the training job.
+        :return: A dict that contains information of training job created
         """
         if self.use_db_config:
             if not self.sagemaker_conn_id:
@@ -210,7 +209,7 @@ class SageMakerHook(AwsHook):
         :type tuning_job_config: dict
         :param wait_for_completion: if the program should keep running until job finishes
         :param wait_for_completion: bool
-        :return: A dict that contains ARN of the tuning job.
+        :return: A dict that contains information of hyperparameter tuning job created
         """
         if self.use_db_config:
             if not self.sagemaker_conn_id:
@@ -243,7 +242,7 @@ class SageMakerHook(AwsHook):
         :param wait_for_completion:
         if the program should keep running until job finishes
         :type wait_for_completion: bool
-        :return: A dict that contains ARN of the transform job.
+        :return: A dict that contains information of transform job created
         """
         if self.use_db_config:
             if not self.sagemaker_conn_id:
@@ -275,7 +274,7 @@ class SageMakerHook(AwsHook):
         Create a model job
         :param model_config: the config for model
         :type model_config: dict
-        :return: A dict that contains ARN of the model.
+        :return: A dict that contains information of model created
         """
 
         return self.conn.create_model(
