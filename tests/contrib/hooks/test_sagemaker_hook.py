@@ -53,7 +53,7 @@ image = 'test-image'
 
 test_arn_return = {'TrainingJobArn': 'testarn'}
 
-test_list_training_job_return = {
+test_list_training_jobs_return = {
     'TrainingJobSummaries': [
         {
             'TrainingJobName': job_name,
@@ -63,7 +63,7 @@ test_list_training_job_return = {
     'NextToken': 'test-token'
 }
 
-test_list_tuning_job_return = {
+test_list_tuning_jobs_return = {
     'TrainingJobSummaries': [
         {
             'TrainingJobName': job_name,
@@ -77,12 +77,33 @@ test_list_tuning_job_return = {
     'NextToken': 'test-token'
 }
 
-test_list_transform_job_return = {
+test_list_transform_jobs_return = {
     'TransformJobSummaries': [
         {
             'TransformJobName': job_name,
             'TransformJobArn': 'testarn',
             'TransformJobStatus': 'InProgress'
+        },
+    ],
+    'NextToken': 'test-token'
+}
+
+test_list_endpoint_configs_return = {
+    'EndpointConfigs': [
+        {
+            'EndpointConfigName': 'string',
+            'EndpointConfigArn': 'string'
+        },
+    ],
+    'NextToken': 'test-token'
+}
+
+test_list_endpoints_return ={
+    'Endpoints': [
+        {
+            'EndpointName': 'string',
+            'EndpointArn': 'string',
+            'EndpointStatus': 'Creating'
         },
     ],
     'NextToken': 'test-token'
@@ -302,49 +323,79 @@ class TestSageMakerHook(unittest.TestCase):
                                                 )
 
     @mock.patch.object(SageMakerHook, 'get_conn')
-    def test_list_training_job(self, mock_client):
+    def test_list_training_jobs(self, mock_client):
         mock_session = mock.Mock()
         attrs = {'list_training_jobs.return_value':
-                 test_list_training_job_return}
+                 test_list_training_jobs_return}
         mock_session.configure_mock(**attrs)
         mock_client.return_value = mock_session
         hook = SageMakerHook(sagemaker_conn_id='sagemaker_test_conn_id')
-        response = hook.list_training_job(nameContains=job_name,
-                                          statusEquals='InProgress')
+        response = hook.list_training_jobs(NameContains=job_name,
+                                           StatusEquals='InProgress')
         mock_session.list_training_jobs. \
             assert_called_once_with(NameContains=job_name,
                                     StatusEquals='InProgress')
-        self.assertEqual(response, test_list_training_job_return)
+        self.assertEqual(response, test_list_training_jobs_return)
 
     @mock.patch.object(SageMakerHook, 'get_conn')
-    def test_list_tuning_job(self, mock_client):
+    def test_list_tuning_jobs(self, mock_client):
         mock_session = mock.Mock()
-        attrs = {'list_hyper_parameter_tuning_job.return_value':
-                 test_list_tuning_job_return}
+        attrs = {'list_hyper_parameter_tuning_jobs.return_value':
+                 test_list_tuning_jobs_return}
         mock_session.configure_mock(**attrs)
         mock_client.return_value = mock_session
         hook = SageMakerHook(sagemaker_conn_id='sagemaker_test_conn_id')
-        response = hook.list_tuning_job(nameContains=job_name,
-                                        statusEquals='InProgress')
-        mock_session.list_hyper_parameter_tuning_job. \
+        response = hook.list_tuning_jobs(NameContains=job_name,
+                                         StatusEquals='InProgress')
+        mock_session.list_hyper_parameter_tuning_jobs. \
             assert_called_once_with(NameContains=job_name,
                                     StatusEquals='InProgress')
-        self.assertEqual(response, test_list_tuning_job_return)
+        self.assertEqual(response, test_list_tuning_jobs_return)
 
     @mock.patch.object(SageMakerHook, 'get_conn')
-    def test_list_transform_job(self, mock_client):
+    def test_list_transform_jobs(self, mock_client):
         mock_session = mock.Mock()
-        attrs = {'list_transform_job.return_value':
-                 test_list_transform_job_return}
+        attrs = {'list_transform_jobs.return_value':
+                 test_list_transform_jobs_return}
         mock_session.configure_mock(**attrs)
         mock_client.return_value = mock_session
         hook = SageMakerHook(sagemaker_conn_id='sagemaker_test_conn_id')
-        response = hook.list_tuning_job(nameContains=job_name,
-                                        statusEquals='InProgress')
-        mock_session.list_hyper_parameter_tuning_job. \
+        response = hook.list_transform_jobs(NameContains=job_name,
+                                            StatusEquals='InProgress')
+        mock_session.list_transform_jobs. \
             assert_called_once_with(NameContains=job_name,
                                     StatusEquals='InProgress')
-        self.assertEqual(response, test_list_transform_job_return)
+        self.assertEqual(response, test_list_transform_jobs_return)
+
+    @mock.patch.object(SageMakerHook, 'get_conn')
+    def test_list_endpoint_configs(self, mock_client):
+        mock_session = mock.Mock()
+        attrs = {'list_endpoint_configs.return_value':
+                 test_list_endpoint_configs_return}
+        mock_session.configure_mock(**attrs)
+        mock_client.return_value = mock_session
+        hook = SageMakerHook(sagemaker_conn_id='sagemaker_test_conn_id')
+        response = hook.list_endpoint_configs(NameContains=job_name,
+                                              SortBy='Name')
+        mock_session.list_endpoint_configs. \
+            assert_called_once_with(NameContains=job_name,
+                                    SortBy='Name')
+        self.assertEqual(response, test_list_endpoint_configs_return)
+
+    @mock.patch.object(SageMakerHook, 'get_conn')
+    def test_list_endpoints(self, mock_client):
+        mock_session = mock.Mock()
+        attrs = {'list_endpoints.return_value':
+                 test_list_endpoints_return}
+        mock_session.configure_mock(**attrs)
+        mock_client.return_value = mock_session
+        hook = SageMakerHook(sagemaker_conn_id='sagemaker_test_conn_id')
+        response = hook.list_endpoints(NameContains=job_name,
+                                       StatusEquals='Creating')
+        mock_session.list_endpoints. \
+            assert_called_once_with(NameContains=job_name,
+                                    StatusEquals='Creating')
+        self.assertEqual(response, test_list_endpoints_return)
 
     @mock.patch.object(SageMakerHook, 'check_valid_training_input')
     @mock.patch.object(SageMakerHook, 'get_conn')

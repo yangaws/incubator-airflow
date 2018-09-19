@@ -48,6 +48,7 @@ class SageMakerHook(AwsHook):
         self.check_interval = check_interval
         self.max_ingestion_time = max_ingestion_time
         self.conn = self.get_conn()
+        self.runtime_conn = self.get_runtime_conn()
 
     def check_for_url(self, s3url):
         """
@@ -149,7 +150,14 @@ class SageMakerHook(AwsHook):
         """
         return self.get_client_type('sagemaker', region_name=self.region_name)
 
-    def list_training_job(self, **kwargs):
+    def get_runtime_conn(self):
+        """
+        Establish an AWS connection
+        :return: a boto3 SageMaker runtime client
+        """
+        return self.get_client_type('sagemaker-runtime', region_name=self.region_name)
+
+    def list_training_jobs(self, **kwargs):
         """
         List the training jobs associated with the given input
         :param https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/sagemaker.html#SageMaker.Client.list_training_jobs
@@ -157,7 +165,7 @@ class SageMakerHook(AwsHook):
         """  # noqa
         return self.conn.list_training_jobs(**kwargs)
 
-    def list_tuning_job(self, **kwargs):
+    def list_tuning_jobs(self, **kwargs):
         """
         List the tuning jobs associated with the given input
         :param https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/sagemaker.html#SageMaker.Client.list_hyper_parameter_tuning_jobs
@@ -165,12 +173,26 @@ class SageMakerHook(AwsHook):
         """  # noqa
         return self.conn.list_hyper_parameter_tuning_job(**kwargs)
 
-    def list_transform_job(self, **kwargs):
+    def list_transform_jobs(self, **kwargs):
         """
         :param https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/sagemaker.html#SageMaker.Client.list_transform_jobs
         :return: A dict of transform job summaries
         """  # noqa
         return self.conn.list_transform_jobs(**kwargs)
+
+    def list_endpoint_configs(self, **kwargs):
+        """
+        :param https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/sagemaker.html#SageMaker.Client.list_endpoint_configs
+        :return: A dict of endpoint config summaries
+        """  # noqa
+        return self.conn.list_endpoint_configs(**kwargs)
+
+    def list_endpoints(self, **kwargs):
+        """
+        :param https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/sagemaker.html#SageMaker.Client.list_endpoints
+        :return: A dict of endpoints summaries
+        """  # noqa
+        return self.conn.list_endpoints(**kwargs)
 
     def create_training_job(self, training_job_config, wait_for_completion=True):
         """
