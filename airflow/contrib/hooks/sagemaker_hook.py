@@ -210,7 +210,7 @@ class SageMakerHook(AwsHook):
         :param wait_for_completion: if the program should keep running until job finishes
         :type wait_for_completion: bool
         :return: A dict that contains information of training job created
-        """
+        """  # noqa
         if self.use_db_config:
             if not self.sagemaker_conn_id:
                 raise AirflowException("SageMaker connection id must be present to read \
