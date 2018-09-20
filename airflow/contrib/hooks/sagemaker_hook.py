@@ -180,6 +180,13 @@ class SageMakerHook(AwsHook):
         """  # noqa
         return self.conn.list_transform_jobs(**kwargs)
 
+    def list_models(self, **kwargs):
+        """
+        :param https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/sagemaker.html#SageMaker.Client.list_models
+        :return: A dict of model summaries
+        """  # noqa
+        return self.conn.list_models(**kwargs)
+
     def list_endpoint_configs(self, **kwargs):
         """
         :param https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/sagemaker.html#SageMaker.Client.list_endpoint_configs
@@ -194,11 +201,12 @@ class SageMakerHook(AwsHook):
         """  # noqa
         return self.conn.list_endpoints(**kwargs)
 
-    def create_training_job(self, training_job_config, wait_for_completion=True):
+    def create_training_job(self, training_job_request, wait_for_completion=True):
         """
         Create a training job
-        :param training_job_config: the config for training
-        :type training_job_config: dict
+        :param training_job_request: the request for creating training job
+        See: https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/sagemaker.html#SageMaker.Client.create_training_job
+        :type training_job_request: dict
         :param wait_for_completion: if the program should keep running until job finishes
         :type wait_for_completion: bool
         :return: A dict that contains information of training job created
@@ -210,29 +218,30 @@ class SageMakerHook(AwsHook):
             sagemaker_conn = self.get_connection(self.sagemaker_conn_id)
 
             config = copy.deepcopy(sagemaker_conn.extra_dejson)
-            training_job_config.update(config)
+            training_job_request.update(config)
 
-        self.check_valid_training_input(training_job_config)
+        self.check_valid_training_input(training_job_request)
 
         response = self.conn.create_training_job(
-            **training_job_config)
+            **training_job_request)
         if wait_for_completion:
             self.check_status(SageMakerHook.non_terminal_states,
                               SageMakerHook.failed_states,
                               'TrainingJobStatus',
                               self.describe_training_job,
-                              training_job_config['TrainingJobName'])
+                              training_job_request['TrainingJobName'])
         return response
 
-    def create_tuning_job(self, tuning_job_config, wait_for_completion=True):
+    def create_tuning_job(self, tuning_job_request, wait_for_completion=True):
         """
         Create a tuning job
-        :param tuning_job_config: the config for tuning
-        :type tuning_job_config: dict
+        :param tuning_job_request: the request for creating tuning job
+        See: https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/sagemaker.html#SageMaker.Client.create_hyper_parameter_tuning_job
+        :type tuning_job_request: dict
         :param wait_for_completion: if the program should keep running until job finishes
         :param wait_for_completion: bool
         :return: A dict that contains information of hyperparameter tuning job created
-        """
+        """  # noqa
         if self.use_db_config:
             if not self.sagemaker_conn_id:
                 raise AirflowException(
@@ -242,30 +251,31 @@ class SageMakerHook(AwsHook):
             sagemaker_conn = self.get_connection(self.sagemaker_conn_id)
 
             config = sagemaker_conn.extra_dejson.copy()
-            tuning_job_config.update(config)
+            tuning_job_request.update(config)
 
-        self.check_valid_tuning_input(tuning_job_config)
+        self.check_valid_tuning_input(tuning_job_request)
 
         response = self.conn.create_hyper_parameter_tuning_job(
-            **tuning_job_config)
+            **tuning_job_request)
         if wait_for_completion:
             self.check_status(SageMakerHook.non_terminal_states,
                               SageMakerHook.failed_states,
                               'HyperParameterTuningJobStatus',
                               self.describe_tuning_job,
-                              tuning_job_config['HyperParameterTuningJobName'])
+                              tuning_job_request['HyperParameterTuningJobName'])
         return response
 
-    def create_transform_job(self, transform_job_config, wait_for_completion=True):
+    def create_transform_job(self, transform_job_request, wait_for_completion=True):
         """
         Create a transform job
-        :param transform_job_config: the config for transform job
-        :type transform_job_config: dict
+        :param transform_job_request: the request for creating transform job
+        See: https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/sagemaker.html#SageMaker.Client.create_transform_job
+        :type transform_job_request: dict
         :param wait_for_completion:
         if the program should keep running until job finishes
         :type wait_for_completion: bool
         :return: A dict that contains information of transform job created
-        """
+        """  # noqa
         if self.use_db_config:
             if not self.sagemaker_conn_id:
                 raise AirflowException(
@@ -275,32 +285,45 @@ class SageMakerHook(AwsHook):
             sagemaker_conn = self.get_connection(self.sagemaker_conn_id)
 
             config = sagemaker_conn.extra_dejson.copy()
-            transform_job_config.update(config)
+            transform_job_request.update(config)
 
-        self.check_for_url(transform_job_config
+        self.check_for_url(transform_job_request
                            ['TransformInput']['DataSource']
                            ['S3DataSource']['S3Uri'])
 
         response = self.conn.create_transform_job(
-            **transform_job_config)
+            **transform_job_request)
         if wait_for_completion:
             self.check_status(SageMakerHook.non_terminal_states,
                               SageMakerHook.failed_states,
                               'TransformJobStatus',
                               self.describe_transform_job,
-                              transform_job_config['TransformJobName'])
+                              transform_job_request['TransformJobName'])
         return response
 
-    def create_model(self, model_config):
+    def create_model(self, model_request):
         """
         Create a model job
-        :param model_config: the config for model
-        :type model_config: dict
+        :param model_request: the request for creating model
+        See: https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/sagemaker.html#SageMaker.Client.create_model
+        :type model_request: dict
         :return: A dict that contains information of model created
-        """
+        """  # noqa
+        if self.use_db_config:
+            if not self.sagemaker_conn_id:
+                raise AirflowException(
+                    "SageMaker connection id must be present to \
+                    read SageMaker model configuration.")
 
+            sagemaker_conn = self.get_connection(self.sagemaker_conn_id)
+
+            config = sagemaker_conn.extra_dejson.copy()
+            model_request.update(config)
+
+        self.check_for_url(model_request
+                           ['PrimaryContainer']['ModelDataUrl'])
         return self.conn.create_model(
-            **model_config)
+            **model_request)
 
     def describe_training_job(self, training_job_name):
         """

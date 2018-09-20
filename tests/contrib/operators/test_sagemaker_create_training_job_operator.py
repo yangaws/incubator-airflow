@@ -93,7 +93,7 @@ class TestSageMakerTrainingOperator(unittest.TestCase):
         self.sagemaker = SageMakerCreateTrainingJobOperator(
             task_id='test_sagemaker_operator',
             sagemaker_conn_id='sagemaker_test_id',
-            training_job_config=create_training_params,
+            training_job_request=create_training_params,
             region_name='us-west-2',
             use_db_config=True,
             wait_for_completion=False,

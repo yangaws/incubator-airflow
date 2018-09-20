@@ -69,16 +69,6 @@ create_transform_params = \
         }
     }
 
-create_model_params = \
-    {
-        'ModelName': model_name,
-        'PrimaryContainer': {
-            'Image': image,
-            'ModelDataUrl': output_url,
-        },
-        'ExecutionRoleArn': role
-    }
-
 
 class TestSageMakertransformOperator(unittest.TestCase):
 
@@ -87,8 +77,7 @@ class TestSageMakertransformOperator(unittest.TestCase):
         self.sagemaker = SageMakerCreateTransformJobOperator(
             task_id='test_sagemaker_operator',
             sagemaker_conn_id='sagemaker_test_id',
-            transform_job_config=create_transform_params,
-            model_config=create_model_params,
+            transform_job_request=create_transform_params,
             region_name='us-west-2',
             use_db_config=True,
             wait_for_completion=False,
@@ -96,10 +85,9 @@ class TestSageMakertransformOperator(unittest.TestCase):
         )
 
     @mock.patch.object(SageMakerHook, 'get_conn')
-    @mock.patch.object(SageMakerHook, 'create_model')
     @mock.patch.object(SageMakerHook, 'create_transform_job')
     @mock.patch.object(SageMakerHook, '__init__')
-    def test_hook_init(self, hook_init, mock_transform, mock_model, mock_client):
+    def test_hook_init(self, hook_init, mock_transform, mock_client):
         mock_transform.return_value = {"TransformJobArn": "testarn",
                                        "ResponseMetadata":
                                        {"HTTPStatusCode": 200}}
@@ -114,22 +102,19 @@ class TestSageMakertransformOperator(unittest.TestCase):
         )
 
     @mock.patch.object(SageMakerHook, 'get_conn')
-    @mock.patch.object(SageMakerHook, 'create_model')
     @mock.patch.object(SageMakerHook, 'create_transform_job')
-    def test_execute_without_failure(self, mock_transform, mock_model, mock_client):
+    def test_execute_without_failure(self, mock_transform, mock_client):
         mock_transform.return_value = {"TransformJobArn": "testarn",
                                        "ResponseMetadata":
                                        {"HTTPStatusCode": 200}}
         self.sagemaker.execute(None)
-        mock_model.assert_called_once_with(create_model_params)
         mock_transform.assert_called_once_with(create_transform_params,
                                                wait_for_completion=False
                                                )
 
     @mock.patch.object(SageMakerHook, 'get_conn')
-    @mock.patch.object(SageMakerHook, 'create_model')
     @mock.patch.object(SageMakerHook, 'create_transform_job')
-    def test_execute_with_failure(self, mock_transform, mock_model, mock_client):
+    def test_execute_with_failure(self, mock_transform, mock_client):
         mock_transform.return_value = {"TransformJobArn": "testarn",
                                        "ResponseMetadata":
                                        {"HTTPStatusCode": 404}}

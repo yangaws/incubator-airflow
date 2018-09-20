@@ -23,97 +23,77 @@ from airflow.utils.decorators import apply_defaults
 from airflow.exceptions import AirflowException
 
 
-class SageMakerCreateTrainingJobOperator(BaseOperator):
+class SageMakerCreateModelOperator(BaseOperator):
 
     """
-       Initiate a SageMaker training
+       Create a SageMaker model
 
-       This operator returns The ARN of the training job created in Amazon SageMaker
+       This operator returns The ARN of the model created in Amazon SageMaker
 
-       :param training_job_request:
-       The configuration necessary to start a training job (templated)
-       :type training_job_request: dict
+       :param model_request:
+       The configuration necessary to create a model (templated)
+       :type model_request: dict
        :param region_name: The AWS region_name
        :type region_name: str
        :param sagemaker_conn_id: The SageMaker connection ID to use.
        :type sagemaker_conn_id: str
        :param use_db_config: Whether or not to use db config
        associated with sagemaker_conn_id.
-       If set to true, will automatically update the training request
+       If set to true, will automatically update the model request
        with what's in db, so the db config doesn't need to
        included everything, but what's there does replace the ones
-       in the training_job_request, so be careful
+       in the model_request, so be careful
        :type use_db_config: bool
        :param aws_conn_id: The AWS connection ID to use.
        :type aws_conn_id: str
-       :param wait_for_completion: if the operator should block
-       until training job finishes
-       :type wait_for_completion: bool
-       :param check_interval: if wait is set to be true, this is the time interval
-       in seconds which the operator will check the status of the training job
-       :type check_interval: int
-       :param max_ingestion_time: if wait is set to be true, the operator will fail
-       if the training job hasn't finish within the max_ingestion_time
-       (Caution: be careful to set this parameters because training can take very long)
-       :type max_ingestion_time: int
 
        **Example**:
-           The following operator would start a training job when executed
+           The following operator would create a model when executed
 
-            sagemaker_training =
-               SageMakerCreateTrainingJobOperator(
-                   task_id='sagemaker_training',
-                   training_job_request=request,
+            sagemaker_model =
+               SageMakerCreateModelOperator(
+                   task_id='sagemaker_model',
+                   model_request=request,
                    region_name='us-west-2'
                    sagemaker_conn_id='sagemaker_customers_conn',
-                   use_db_config=True,
+                   use_db_config=False,
                    aws_conn_id='aws_customers_conn'
                )
     """
 
-    template_fields = ['training_job_request']
+    template_fields = ['model_request']
     template_ext = ()
     ui_color = '#ededed'
 
     @apply_defaults
     def __init__(self,
-                 training_job_request=None,
+                 model_request=None,
                  region_name=None,
                  sagemaker_conn_id=None,
                  use_db_config=False,
-                 wait_for_completion=True,
-                 check_interval=5,
-                 max_ingestion_time=None,
                  *args, **kwargs):
-        super(SageMakerCreateTrainingJobOperator, self).__init__(*args, **kwargs)
+        super(SageMakerCreateModelOperator, self).__init__(*args, **kwargs)
 
         self.sagemaker_conn_id = sagemaker_conn_id
-        self.training_job_request = training_job_request
+        self.model_request = model_request
         self.use_db_config = use_db_config
         self.region_name = region_name
-        self.wait_for_completion = wait_for_completion
-        self.check_interval = check_interval
-        self.max_ingestion_time = max_ingestion_time
 
     def execute(self, context):
         sagemaker = SageMakerHook(
             sagemaker_conn_id=self.sagemaker_conn_id,
             use_db_config=self.use_db_config,
-            region_name=self.region_name,
-            check_interval=self.check_interval,
-            max_ingestion_time=self.max_ingestion_time
+            region_name=self.region_name
         )
 
         self.log.info(
-            "Creating SageMaker Training Job %s."
-            % self.training_job_request['TrainingJobName']
+            "Creating SageMaker Model %s."
+            % self.model_request['ModelName']
         )
-        response = sagemaker.create_training_job(
-            self.training_job_request,
-            wait_for_completion=self.wait_for_completion)
+        response = sagemaker.create_model(self.modelrequest)
         if not response['ResponseMetadata']['HTTPStatusCode'] \
            == 200:
             raise AirflowException(
-                'Sagemaker Training Job creation failed: %s' % response)
+                'Sagemaker model creation failed: %s' % response)
         else:
             return response

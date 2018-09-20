@@ -118,7 +118,7 @@ class TestSageMakerTrainingOperator(unittest.TestCase):
         self.sagemaker = SageMakerCreateTuningJobOperator(
             task_id='test_sagemaker_operator',
             sagemaker_conn_id='sagemaker_test_conn',
-            tuning_job_config=create_tuning_params,
+            tuning_job_request=create_tuning_params,
             region_name='us-east-1',
             use_db_config=False,
             wait_for_completion=False,

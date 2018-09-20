@@ -27,24 +27,19 @@ class SageMakerCreateTransformJobOperator(BaseOperator):
     """
        Initiate a SageMaker transform
 
-       This operator returns The ARN of the model created in Amazon SageMaker
+       This operator returns The ARN of the transform job created in Amazon SageMaker
 
        :param sagemaker_conn_id: The SageMaker connection ID to use.
        :type sagemaker_conn_id: string
-       :param transform_job_config:
+       :param transform_job_request:
        The configuration necessary to start a transform job (templated)
-       :type transform_job_config: dict
-       :param model_config:
-       The configuration necessary to create a model, the default is none
-       which means that user should provide a created model in transform_job_config
-       If given, will be used to create a model before creating transform job
-       :type model_config: dict
+       :type transform_job_request: dict
        :param use_db_config: Whether or not to use db config
        associated with sagemaker_conn_id.
-       If set to true, will automatically update the transform config
+       If set to true, will automatically update the transform request
        with what's in db, so the db config doesn't need to
        included everything, but what's there does replace the ones
-       in the transform_job_config, so be careful
+       in the transform_job_request, so be careful
        :type use_db_config: bool
        :param region_name: The AWS region_name
        :type region_name: string
@@ -66,8 +61,7 @@ class SageMakerCreateTransformJobOperator(BaseOperator):
             sagemaker_transform =
                SageMakerCreateTransformJobOperator(
                    task_id='sagemaker_transform',
-                   transform_job_config=config_transform,
-                   model_config=config_model,
+                   transform_job_request=request,
                    region_name='us-west-2'
                    sagemaker_conn_id='sagemaker_customers_conn',
                    use_db_config=True,
@@ -75,15 +69,14 @@ class SageMakerCreateTransformJobOperator(BaseOperator):
                )
        """
 
-    template_fields = ['transform_job_config']
+    template_fields = ['transform_job_request']
     template_ext = ()
     ui_color = '#ededed'
 
     @apply_defaults
     def __init__(self,
                  sagemaker_conn_id=None,
-                 transform_job_config=None,
-                 model_config=None,
+                 transform_job_request=None,
                  use_db_config=False,
                  region_name=None,
                  wait_for_completion=True,
@@ -93,8 +86,7 @@ class SageMakerCreateTransformJobOperator(BaseOperator):
         super(SageMakerCreateTransformJobOperator, self).__init__(*args, **kwargs)
 
         self.sagemaker_conn_id = sagemaker_conn_id
-        self.transform_job_config = transform_job_config
-        self.model_config = model_config
+        self.transform_job_request = transform_job_request
         self.use_db_config = use_db_config
         self.region_name = region_name
         self.wait_for_completion = wait_for_completion
@@ -110,19 +102,12 @@ class SageMakerCreateTransformJobOperator(BaseOperator):
             max_ingestion_time=self.max_ingestion_time
         )
 
-        if self.model_config:
-            self.log.info(
-                "Creating SageMaker Model %s for transform job"
-                % self.model_config['ModelName']
-            )
-            sagemaker.create_model(self.model_config)
-
         self.log.info(
             "Creating SageMaker transform Job %s."
-            % self.transform_job_config['TransformJobName']
+            % self.transform_job_request['TransformJobName']
         )
         response = sagemaker.create_transform_job(
-            self.transform_job_config,
+            self.transform_job_request,
             wait_for_completion=self.wait_for_completion)
         if not response['ResponseMetadata']['HTTPStatusCode'] \
            == 200:

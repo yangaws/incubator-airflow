@@ -28,21 +28,21 @@ class SageMakerCreateTuningJobOperator(BaseOperator):
     """
        Initiate a SageMaker HyperParameter Tuning Job
 
-       This operator returns The ARN of the model created in Amazon SageMaker
+       This operator returns The ARN of the tuning job created in Amazon SageMaker
 
        :param sagemaker_conn_id: The SageMaker connection ID to use.
        :type sagemaker_conn_id: str
        :param region_name: The AWS region_name
        :type region_name: str
-       :param tuning_job_config:
+       :param tuning_job_request:
        The configuration necessary to start a tuning job (templated)
-       :type tuning_job_config: dict
+       :type tuning_job_request: dict
        :param use_db_config: Whether or not to use db config
        associated with sagemaker_conn_id.
-       If set to true, will automatically update the tuning config
+       If set to true, will automatically update the tuning request
        with what's in db, so the db config doesn't need to
        included everything, but what's there does replace the ones
-       in the tuning_job_config, so be careful
+       in the tuning_job_request, so be careful
        :type use_db_config: bool
        :param wait_for_completion: if the operator should block
        until tuning job finishes
@@ -64,14 +64,14 @@ class SageMakerCreateTuningJobOperator(BaseOperator):
                SageMakerCreateTuningJobOperator(
                    task_id='sagemaker_tuning',
                    sagemaker_conn_id='sagemaker_customers_conn',
-                   tuning_job_config=config,
+                   tuning_job_request=request,
                    check_interval=2,
                    max_ingestion_time=3600,
                    aws_conn_id='aws_customers_conn',
                )
        """
 
-    template_fields = ['tuning_job_config']
+    template_fields = ['tuning_job_request']
     template_ext = ()
     ui_color = '#ededed'
 
@@ -79,7 +79,7 @@ class SageMakerCreateTuningJobOperator(BaseOperator):
     def __init__(self,
                  sagemaker_conn_id=None,
                  region_name=None,
-                 tuning_job_config=None,
+                 tuning_job_request=None,
                  use_db_config=False,
                  wait_for_completion=True,
                  check_interval=5,
@@ -90,7 +90,7 @@ class SageMakerCreateTuningJobOperator(BaseOperator):
 
         self.sagemaker_conn_id = sagemaker_conn_id
         self.region_name = region_name
-        self.tuning_job_config = tuning_job_config
+        self.tuning_job_request = tuning_job_request
         self.use_db_config = use_db_config
         self.wait_for_completion = wait_for_completion
         self.check_interval = check_interval
@@ -106,11 +106,11 @@ class SageMakerCreateTuningJobOperator(BaseOperator):
 
         self.log.info(
             "Creating SageMaker Hyper Parameter Tunning Job %s"
-            % self.tuning_job_config['HyperParameterTuningJobName']
+            % self.tuning_job_request['HyperParameterTuningJobName']
         )
 
         response = sagemaker.create_tuning_job(
-            self.tuning_job_config,
+            self.tuning_job_request,
             wait_for_completion=self.wait_for_completion
         )
         if not response['ResponseMetadata']['HTTPStatusCode'] \

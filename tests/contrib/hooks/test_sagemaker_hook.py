@@ -88,6 +88,16 @@ test_list_transform_jobs_return = {
     'NextToken': 'test-token'
 }
 
+test_list_models_return = {
+    'Models': [
+        {
+            'ModelName': job_name,
+            'ModelArn': 'testarn'
+        },
+    ],
+    'NextToken': 'test-token'
+}
+
 test_list_endpoint_configs_return = {
     'EndpointConfigs': [
         {
@@ -98,7 +108,7 @@ test_list_endpoint_configs_return = {
     'NextToken': 'test-token'
 }
 
-test_list_endpoints_return ={
+test_list_endpoints_return = {
     'Endpoints': [
         {
             'EndpointName': 'string',
@@ -368,6 +378,19 @@ class TestSageMakerHook(unittest.TestCase):
         self.assertEqual(response, test_list_transform_jobs_return)
 
     @mock.patch.object(SageMakerHook, 'get_conn')
+    def test_list_models(self, mock_client):
+        mock_session = mock.Mock()
+        attrs = {'list_models.return_value':
+                 test_list_models_return}
+        mock_session.configure_mock(**attrs)
+        mock_client.return_value = mock_session
+        hook = SageMakerHook(sagemaker_conn_id='sagemaker_test_conn_id')
+        response = hook.list_models(NameContains=job_name)
+        mock_session.list_models. \
+            assert_called_once_with(NameContains=job_name)
+        self.assertEqual(response, test_list_models_return)
+
+    @mock.patch.object(SageMakerHook, 'get_conn')
     def test_list_endpoint_configs(self, mock_client):
         mock_session = mock.Mock()
         attrs = {'list_endpoint_configs.return_value':
@@ -538,8 +561,9 @@ class TestSageMakerHook(unittest.TestCase):
         mock_session.create_transform_job.assert_called_once_with(**updated_config)
         self.assertEqual(response, test_arn_return)
 
+    @mock.patch.object(SageMakerHook, 'check_for_url')
     @mock.patch.object(SageMakerHook, 'get_conn')
-    def test_create_model(self, mock_client):
+    def test_create_model(self, mock_client, mock_check_url):
         mock_session = mock.Mock()
         attrs = {'create_model.return_value':
                  test_arn_return}
