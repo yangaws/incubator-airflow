@@ -90,7 +90,7 @@ class SageMakerCreateModelOperator(BaseOperator):
             "Creating SageMaker Model %s."
             % self.model_request['ModelName']
         )
-        response = sagemaker.create_model(self.modelrequest)
+        response = sagemaker.create_model(self.model_request)
         if not response['ResponseMetadata']['HTTPStatusCode'] \
            == 200:
             raise AirflowException(

@@ -171,7 +171,7 @@ class SageMakerHook(AwsHook):
         :param https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/sagemaker.html#SageMaker.Client.list_hyper_parameter_tuning_jobs
         :return: A dict of hyperparamter tuning job summaries
         """  # noqa
-        return self.conn.list_hyper_parameter_tuning_job(**kwargs)
+        return self.conn.list_hyper_parameter_tuning_jobs(**kwargs)
 
     def list_transform_jobs(self, **kwargs):
         """

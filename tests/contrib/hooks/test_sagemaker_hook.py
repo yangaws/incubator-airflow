@@ -328,9 +328,8 @@ class TestSageMakerHook(unittest.TestCase):
                              region_name='us-east-1'
                              )
         self.assertEqual(hook.sagemaker_conn_id, 'sagemaker_test_conn_id')
-        mock_get_client.assert_called_once_with('sagemaker',
-                                                region_name='us-east-1'
-                                                )
+        mock_get_client.assert_any_call('sagemaker', region_name='us-east-1')
+        mock_get_client.assert_any_call('sagemaker-runtime', region_name='us-east-1')
 
     @mock.patch.object(SageMakerHook, 'get_conn')
     def test_list_training_jobs(self, mock_client):
