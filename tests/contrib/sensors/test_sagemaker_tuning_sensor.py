@@ -71,8 +71,9 @@ class TestSageMakerTuningSensor(unittest.TestCase):
         configuration.load_test_config()
 
     @mock.patch.object(SageMakerHook, 'get_conn')
+    @mock.patch.object(SageMakerHook, 'get_runtime_conn')
     @mock.patch.object(SageMakerHook, 'describe_tuning_job')
-    def test_raises_errors_failed_state(self, mock_describe_job, mock_client):
+    def test_raises_errors_failed_state(self, mock_describe_job, mock_runtime_client, mock_client):
         mock_describe_job.side_effect = [DESCRIBE_TUNING_FAILED_RETURN]
         sensor = SageMakerTuningSensor(
             task_id='test_task',
