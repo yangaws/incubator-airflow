@@ -19,6 +19,7 @@
 #
 
 import mock
+import tempfile
 import unittest
 
 from airflow import configuration
@@ -65,6 +66,12 @@ class TestS3Hook(unittest.TestCase):
         hook = S3Hook(aws_conn_id=None)
         b = hook.get_bucket('bucket')
         self.assertIsNotNone(b)
+
+    @mock_s3
+    def test_create_bucket(self):
+        hook = S3Hook(aws_conn_id=None)
+        hook.create_bucket('bucket')
+        self.assertTrue(hook.check_for_bucket('bucket'))
 
     @mock_s3
     def test_check_for_prefix(self):
@@ -240,6 +247,23 @@ class TestS3Hook(unittest.TestCase):
         body = boto3.resource('s3').Object('mybucket', 'my_key').get()['Body'].read()
 
         self.assertEqual(body, b'Content')
+
+    @mock_s3
+    def test_load_file_obj(self):
+        hook = S3Hook(aws_conn_id=None)
+        conn = hook.get_conn()
+        # We need to create the bucket since this is all in Moto's 'virtual'
+        # AWS account
+        conn.create_bucket(Bucket="mybucket")
+
+        content = b"Content"
+        with tempfile.TemporaryFile() as temp_file:
+            temp_file.write(content)
+            temp_file.seek(0)
+            hook.load_file_obj(temp_file, "my_key", "mybucket")
+            body = boto3.resource('s3').Object('mybucket', 'my_key').get()['Body'].read()
+
+            self.assertEqual(body, content)
 
 
 if __name__ == '__main__':
