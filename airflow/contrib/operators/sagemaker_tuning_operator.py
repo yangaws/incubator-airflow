@@ -114,7 +114,7 @@ class SageMakerTuningOperator(BaseOperator):
                 "Sagemaker Tuning Job creation failed: %s" % response)
         else:
             return {
-                'config': self.config,
-                'information': sagemaker.describe_tuning_job(
+                'Tuning': sagemaker.describe_tuning_job(
                     self.config['HyperParameterTuningJobName']
-                )}
+                )
+            }

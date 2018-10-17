@@ -87,7 +87,7 @@ class SageMakerModelOperator(BaseOperator):
                 'Sagemaker model creation failed: %s' % response)
         else:
             return {
-                'config': self.config,
-                'information': sagemaker.describe_model(
+                'Model': sagemaker.describe_model(
                     self.config['ModelName']
-                )}
+                )
+            }

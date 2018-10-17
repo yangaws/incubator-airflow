@@ -71,6 +71,7 @@ class SageMakerTrainingOperator(BaseOperator):
                  region_name=None,
                  aws_conn_id='sagemaker_default',
                  wait_for_completion=True,
+                 print_log=True,
                  check_interval=30,
                  max_ingestion_time=None,
                  *args, **kwargs):
@@ -80,6 +81,7 @@ class SageMakerTrainingOperator(BaseOperator):
         self.config = config
         self.region_name = region_name
         self.wait_for_completion = wait_for_completion
+        self.print_log = print_log
         self.check_interval = check_interval
         self.max_ingestion_time = max_ingestion_time
 
@@ -107,6 +109,7 @@ class SageMakerTrainingOperator(BaseOperator):
         response = sagemaker.create_training_job(
             self.config,
             wait_for_completion=self.wait_for_completion,
+            print_log=self.print_log,
             check_interval=self.check_interval,
             max_ingestion_time=self.max_ingestion_time
         )
@@ -116,7 +119,7 @@ class SageMakerTrainingOperator(BaseOperator):
                 'Sagemaker Training Job creation failed: %s' % response)
         else:
             return {
-                'config': self.config,
-                'information': sagemaker.describe_training_job(
+                'Training': sagemaker.describe_training_job(
                     self.config['TrainingJobName']
-                )}
+                )
+            }

@@ -144,13 +144,13 @@ class SageMakerDeployOperator(BaseOperator):
                 'Sagemaker endpoint creation failed: %s' % response)
         else:
             return {
-                'config': self.config,
-                'model_information': sagemaker.describe_model(
+                'Model': sagemaker.describe_model(
                     model_info['ModelName']
                 ),
-                'endpoint_config_information': sagemaker.describe_endpoint_config(
+                'EndpointConfig': sagemaker.describe_endpoint_config(
                     endpoint_config_info['EndpointConfigName']
                 ),
-                'endpoint_information': sagemaker.describe_endpoint(
+                'Endpoint': sagemaker.describe_endpoint(
                     endpoint_info['EndpointName']
-                )}
+                )
+            }

@@ -20,12 +20,186 @@ import tarfile
 import tempfile
 import time
 import os
+import collections
+import functools
+import sys
+from datetime import datetime
 
+import botocore.config
 from botocore.exceptions import ClientError
 
 from airflow.exceptions import AirflowException
 from airflow.contrib.hooks.aws_hook import AwsHook
 from airflow.hooks.S3_hook import S3Hook
+
+
+class LogState(object):
+    STARTING = 1
+    WAIT_IN_PROGRESS = 2
+    TAILING = 3
+    JOB_COMPLETE = 4
+    COMPLETE = 5
+
+
+# Position is a tuple that includes the last read timestamp and the number of items that were read
+# at that time. This is used to figure out which event to start with on the next read.
+Position = collections.namedtuple('Position', ['timestamp', 'skip'])
+
+
+def argmin(arr, f):
+    """Return the index, i, in arr that minimizes f(arr[i])"""
+    m = None
+    i = None
+    for idx, item in enumerate(arr):
+        if item is not None:
+            if m is None or f(item) < m:
+                m = f(item)
+                i = idx
+    return i
+
+
+def some(arr):
+    """Return True iff there is an element, a, of arr such that a is not None"""
+    return functools.reduce(lambda x, y: x or (y is not None), arr, False)
+
+
+def multi_stream_iter(client, log_group, streams, positions=None):
+    """
+    Iterate over the available events coming from a set of log streams in a single log group
+    interleaving the events from each stream so they're yielded in timestamp order.
+
+    :param client: The Boto client for CloudWatch logs.
+    :type client: boto3.CloudWatchLogs.Client
+    :param log_group: The name of the log group.
+    :type log_group: str
+    :param streams: A list of the log stream names. The position of the stream in this list is
+    the stream number.
+    :type streams: list
+    :param positions: A list of pairs of (timestamp, skip) which represents the last record
+    read from each stream.
+    :type positions: list
+
+    :return: A tuple of (stream number, cloudwatch log event).
+    """
+    positions = positions or {s: Position(timestamp=0, skip=0) for s in streams}
+    event_iters = [log_stream(client, log_group, s, positions[s].timestamp, positions[s].skip) for s in streams]
+    events = [next(s) if s else None for s in event_iters]
+
+    while some(events):
+        i = argmin(events, lambda x: x['timestamp'] if x else 9999999999)
+        yield (i, events[i])
+        try:
+            events[i] = next(event_iters[i])
+        except StopIteration:
+            events[i] = None
+
+
+def log_stream(client, log_group, stream_name, start_time=0, skip=0):
+    """
+    A generator for log items in a single stream. This will yield all the
+    items that are available at the current moment.
+
+    :param client: The Boto client for CloudWatch logs.
+    :type client: boto3.CloudWatchLogs.Client
+    :param log_group: The name of the log group.
+    :type log_group: str
+    :param stream_name: The name of the specific stream.
+    :type stream_name: str
+    :param start_time: The time stamp value to start reading the logs from (default: 0).
+    :type start_time: int
+    :param skip: The number of log entries to skip at the start (default: 0).
+    This is for when there are multiple entries at the same timestamp.
+    :type skip: int
+
+    :return:A CloudWatch log event with the following key-value pairs:
+           'timestamp' (int): The time of the event.
+           'message' (str): The log event data.
+           'ingestionTime' (int): The time the event was ingested.
+    """
+
+    next_token = None
+
+    event_count = 1
+    while event_count > 0:
+        if next_token is not None:
+            token_arg = {'nextToken': next_token}
+        else:
+            token_arg = {}
+
+        response = client.get_log_events(logGroupName=log_group, logStreamName=stream_name, startTime=start_time,
+                                         startFromHead=True, **token_arg)
+        next_token = response['nextForwardToken']
+        events = response['events']
+        event_count = len(events)
+        if event_count > skip:
+            events = events[skip:]
+            skip = 0
+        else:
+            skip = skip - event_count
+            events = []
+        for ev in events:
+            yield ev
+
+
+def secondary_training_status_changed(current_job_description, prev_job_description):
+    """
+    Returns true if training job's secondary status message has changed.
+
+    :param current_job_desc: Current job description, returned from DescribeTrainingJob call.
+    :type dict
+    :param prev_job_desc: Previous job description, returned from DescribeTrainingJob call.
+    :type dict
+
+    :return: Whether the secondary status message of a training job changed or not.
+    """
+    current_secondary_status_transitions = current_job_description.get('SecondaryStatusTransitions')
+    if current_secondary_status_transitions is None or len(current_secondary_status_transitions) == 0:
+        return False
+
+    prev_job_secondary_status_transitions = prev_job_description.get('SecondaryStatusTransitions') \
+        if prev_job_description is not None else None
+
+    last_message = prev_job_secondary_status_transitions[-1]['StatusMessage'] \
+        if prev_job_secondary_status_transitions is not None and len(prev_job_secondary_status_transitions) > 0 else ''
+
+    message = current_job_description['SecondaryStatusTransitions'][-1]['StatusMessage']
+
+    return message != last_message
+
+
+def secondary_training_status_message(job_description, prev_description):
+    """
+    Returns a string contains start time and the secondary training job status message.
+
+    :param job_description: Returned response from DescribeTrainingJob call
+    :type job_description: dict
+    :param prev_description: Previous job description from DescribeTrainingJob call
+    :type prev_description: dict
+
+    :return: Job status string to be printed.
+    """
+
+    if job_description is None or job_description.get('SecondaryStatusTransitions') is None\
+            or len(job_description.get('SecondaryStatusTransitions')) == 0:
+        return ''
+
+    prev_description_secondary_transitions = prev_description.get('SecondaryStatusTransitions')\
+        if prev_description is not None else None
+    prev_transitions_num = len(prev_description['SecondaryStatusTransitions'])\
+        if prev_description_secondary_transitions is not None else 0
+    current_transitions = job_description['SecondaryStatusTransitions']
+
+    transitions_to_print = current_transitions[-1:] if len(current_transitions) == prev_transitions_num else \
+        current_transitions[prev_transitions_num - len(current_transitions):]
+
+    status_strs = []
+    for transition in transitions_to_print:
+        message = transition['StatusMessage']
+        time_str = datetime.utcfromtimestamp(
+            time.mktime(job_description['LastModifiedTime'].timetuple())).strftime('%Y-%m-%d %H:%M:%S')
+        status_strs.append('{} {} - {}'.format(time_str, transition['Status'], message))
+
+    return '\n'.join(status_strs)
 
 
 class SageMakerHook(AwsHook):
@@ -161,72 +335,23 @@ class SageMakerHook(AwsHook):
             self.check_s3_url(channel['DataSource']
                                      ['S3DataSource']['S3Uri'])
 
-    def check_status(self, non_terminal_states,
-                     failed_state, key,
-                     describe_function, check_interval,
-                     max_ingestion_time, *args):
+    def get_conn(self, config=None):
         """
-        Check status of a SageMaker job
-        :param non_terminal_states: the set of non_terminal states
-        :type non_terminal_states: set
-        :param failed_state: the set of failed states
-        :type failed_state: set
-        :param key: the key of the response dict
-        that points to the state
-        :type key: str
-        :param describe_function: the function used to retrieve the status
-        :type describe_function: python callable
-        :param args: the arguments for the function
-        :param check_interval: the time interval in seconds which the operator
-        will check the status of any SageMaker job
-        :type check_interval: int
-        :param max_ingestion_time: the maximum ingestion time in seconds. Any
-        SageMaker jobs that run longer than this will fail. Setting this to
-        None implies no timeout for any SageMaker job.
-        :type max_ingestion_time: int
-        :return: None
-        """
-        sec = 0
-        running = True
-
-        while running:
-
-            sec = sec + check_interval
-
-            if max_ingestion_time and sec > max_ingestion_time:
-                # ensure that the job gets killed if the max ingestion time is exceeded
-                raise AirflowException("SageMaker job took more than "
-                                       "%s seconds", max_ingestion_time)
-
-            time.sleep(check_interval)
-            try:
-                response = describe_function(*args)
-                status = response[key]
-                self.log.info("Job still running for %s seconds... "
-                              "current status is %s" % (sec, status))
-            except KeyError:
-                raise AirflowException("Could not get status of the SageMaker job")
-            except ClientError:
-                raise AirflowException("AWS request failed, check logs for more info")
-
-            if status in non_terminal_states:
-                running = True
-            elif status in failed_state:
-                raise AirflowException("SageMaker job failed because %s"
-                                       % response['FailureReason'])
-            else:
-                running = False
-
-        self.log.info('SageMaker Job Compeleted')
-
-    def get_conn(self):
-        """
-        Establish an AWS connection
+        Establish an AWS connection for SageMaker
         :return: a boto3 SageMaker client
         """
-        return self.get_client_type('sagemaker', region_name=self.region_name)
+        return self.get_client_type('sagemaker', region_name=self.region_name,
+                                    config=config)
 
-    def create_training_job(self, config, wait_for_completion=True,
+    def get_log_conn(self, config=None):
+        """
+        Establish an AWS connection for retrieving logs during training
+        :return: a boto CloudWatchLog client
+        """
+        return self.get_client_type('logs', region_name=self.region_name,
+                                    config=config)
+
+    def create_training_job(self, config, wait_for_completion=True, print_log=True,
                             check_interval=30, max_ingestion_time=None):
         """
         Create a training job
@@ -249,13 +374,20 @@ class SageMakerHook(AwsHook):
 
         response = self.conn.create_training_job(
             **config)
-        if wait_for_completion:
-            self.check_status(SageMakerHook.non_terminal_states,
+        if print_log:
+            self.check_training_status_with_log(config['TrainingJobName'],
+                                                SageMakerHook.non_terminal_states,
+                                                SageMakerHook.failed_states,
+                                                wait_for_completion,
+                                                check_interval, max_ingestion_time
+                                                )
+        elif wait_for_completion:
+            self.check_status(config['TrainingJobName'],
+                              SageMakerHook.non_terminal_states,
                               SageMakerHook.failed_states,
                               'TrainingJobStatus',
                               self.describe_training_job,
-                              check_interval, max_ingestion_time,
-                              config['TrainingJobName']
+                              check_interval, max_ingestion_time
                               )
         return response
 
@@ -283,12 +415,12 @@ class SageMakerHook(AwsHook):
         response = self.conn.create_hyper_parameter_tuning_job(
             **config)
         if wait_for_completion:
-            self.check_status(SageMakerHook.non_terminal_states,
+            self.check_status(config['HyperParameterTuningJobName'],
+                              SageMakerHook.non_terminal_states,
                               SageMakerHook.failed_states,
                               'HyperParameterTuningJobStatus',
                               self.describe_tuning_job,
-                              check_interval, max_ingestion_time,
-                              config['HyperParameterTuningJobName']
+                              check_interval, max_ingestion_time
                               )
         return response
 
@@ -320,12 +452,12 @@ class SageMakerHook(AwsHook):
         response = self.conn.create_transform_job(
             **config)
         if wait_for_completion:
-            self.check_status(SageMakerHook.non_terminal_states,
+            self.check_status(config['TransformJobName'],
+                              SageMakerHook.non_terminal_states,
                               SageMakerHook.failed_states,
                               'TransformJobStatus',
                               self.describe_transform_job,
-                              check_interval, max_ingestion_time,
-                              config['TransformJobName']
+                              check_interval, max_ingestion_time
                               )
         return response
 
@@ -375,12 +507,12 @@ class SageMakerHook(AwsHook):
         response = self.conn.create_endpoint(
             **config)
         if wait_for_completion:
-            self.check_status(SageMakerHook.endpoint_non_terminal_states,
+            self.check_status(config['EndpointName'],
+                              SageMakerHook.endpoint_non_terminal_states,
                               SageMakerHook.failed_states,
                               'EndpointStatus',
                               self.describe_endpoint,
-                              check_interval, max_ingestion_time,
-                              config['EndpointName']
+                              check_interval, max_ingestion_time
                               )
         return response
 
@@ -406,12 +538,12 @@ class SageMakerHook(AwsHook):
         response = self.conn.update_endpoint(
             **config)
         if wait_for_completion:
-            self.check_status(SageMakerHook.non_terminal_states,
+            self.check_status(config['EndpointName'],
+                              SageMakerHook.non_terminal_states,
                               SageMakerHook.failed_states,
                               'EndpointStatus',
                               self.describe_endpoint,
-                              check_interval, max_ingestion_time,
-                              config['EndpointName']
+                              check_interval, max_ingestion_time
                               )
         return response
 
@@ -483,3 +615,189 @@ class SageMakerHook(AwsHook):
         return self.conn\
             .describe_endpoint(
                 EndpointName=name)
+
+    def check_status(self, job_name, non_terminal_states,
+                     failed_states, key,
+                     describe_function, check_interval,
+                     max_ingestion_time):
+        """
+        Check status of a SageMaker job
+        :param job_name: name of the job to check status
+        :type job_name: str
+        :param non_terminal_states: the set of non_terminal states
+        :type non_terminal_states: set
+        :param failed_states: the set of failed states
+        :type failed_states: set
+        :param key: the key of the response dict
+        that points to the state
+        :type key: str
+        :param describe_function: the function used to retrieve the status
+        :type describe_function: python callable
+        :param args: the arguments for the function
+        :param check_interval: the time interval in seconds which the operator
+        will check the status of any SageMaker job
+        :type check_interval: int
+        :param max_ingestion_time: the maximum ingestion time in seconds. Any
+        SageMaker jobs that run longer than this will fail. Setting this to
+        None implies no timeout for any SageMaker job.
+        :type max_ingestion_time: int
+        :return: None
+        """
+        sec = 0
+        running = True
+
+        while running:
+            try:
+                response = describe_function(job_name)
+                status = response[key]
+                self.log.info("Job still running for %s seconds... "
+                              "current status is %s" % (sec, status))
+            except KeyError:
+                raise AirflowException("Could not get status of the SageMaker job")
+            except ClientError:
+                raise AirflowException("AWS request failed, check logs for more info")
+
+            if status in non_terminal_states:
+                running = True
+            elif status in failed_states:
+                raise AirflowException("SageMaker job failed because %s"
+                                       % response['FailureReason'])
+            else:
+                running = False
+
+            time.sleep(check_interval)
+            sec = sec + check_interval
+
+            if max_ingestion_time and sec > max_ingestion_time:
+                # ensure that the job gets killed if the max ingestion time is exceeded
+                raise AirflowException("SageMaker job took more than "
+                                       "%s seconds", max_ingestion_time)
+
+        self.log.info('SageMaker Job Compeleted')
+
+    def check_training_status_with_log(self, job_name, non_terminal_states, failed_states, wait_for_completion,
+                                       check_interval, max_ingestion_time):
+        """
+        Display the logs for a given training job, optionally tailing them until the
+        job is complete.
+
+        :param job_name: name of the training job to check status and display logs for
+        :type job_name: str
+        :param non_terminal_states: the set of non_terminal states
+        :type non_terminal_states: set
+        :param failed_states: the set of failed states
+        :type failed_states: set
+        :param wait_for_completion: Whether to keep looking for new log entries
+        until the job completes
+        :type wait_for_completion: bool
+        :param check_interval: The interval in seconds between polling for new log entries and job completion
+        :type check_interval: int
+        :param max_ingestion_time: the maximum ingestion time in seconds. Any
+        SageMaker jobs that run longer than this will fail. Setting this to
+        None implies no timeout for any SageMaker job.
+        :type max_ingestion_time: int
+        :return: None
+        """
+
+        sec = 0
+        description = self.describe_training_job(job_name)
+        self.log.info(secondary_training_status_message(description, None))
+        instance_count = description['ResourceConfig']['InstanceCount']
+        status = description['TrainingJobStatus']
+
+        stream_names = []  # The list of log streams
+        positions = {}     # The current position in each stream, map of stream name -> position
+
+        # Increase retries allowed (from default of 4), as we don't want waiting for a training job
+        # to be interrupted by a transient exception.
+        config = botocore.config.Config(retries={'max_attempts': 15})
+        client = self.get_log_conn(config)
+        log_group = '/aws/sagemaker/TrainingJobs'
+
+        job_already_completed = False if status in non_terminal_states else True
+
+        state = LogState.TAILING if wait_for_completion and not job_already_completed else LogState.COMPLETE
+
+        # The loop below implements a state machine that alternates between checking the job status and
+        # reading whatever is available in the logs at this point. Note, that if we were called with
+        # wait_for_completion == False, we never check the job status.
+        #
+        # If wait_for_completion == TRUE and job is not completed, the initial state is TAILING
+        # If wait_for_completion == FALSE, the initial state is COMPLETE (doesn't matter if the job really is complete).
+        #
+        # The state table:
+        #
+        # STATE               ACTIONS                        CONDITION             NEW STATE
+        # ----------------    ----------------               -----------------     ----------------
+        # TAILING             Read logs, Pause, Get status   Job complete          JOB_COMPLETE
+        #                                                    Else                  TAILING
+        # JOB_COMPLETE        Read logs, Pause               Any                   COMPLETE
+        # COMPLETE            Read logs, Exit                                      N/A
+        #
+        # Notes:
+        # - The JOB_COMPLETE state forces us to do an extra pause and read any items that got to Cloudwatch after
+        #   the job was marked complete.
+        last_describe_job_call = time.time()
+        last_description = description
+
+        while True:
+
+            if len(stream_names) < instance_count:
+                # Log streams are created whenever a container starts writing to stdout/err, so this list
+                # may be dynamic until we have a stream for every instance.
+                try:
+                    streams = client.describe_log_streams(logGroupName=log_group, logStreamNamePrefix=job_name + '/',
+                                                          orderBy='LogStreamName', limit=instance_count)
+                    stream_names = [s['logStreamName'] for s in streams['logStreams']]
+                    positions.update([(s, Position(timestamp=0, skip=0))
+                                      for s in stream_names if s not in positions])
+                except ClientError as e:
+                    # On the very first training job run on an account, there's no log group until
+                    # the container starts logging, so ignore any errors thrown about that
+                    err = e.response.get('Error', {})
+                    if err.get('Code', None) != 'ResourceNotFoundException':
+                        raise
+
+            if len(stream_names) > 0:
+                for idx, event in multi_stream_iter(client, log_group, stream_names, positions):
+                    self.log.info(event['message'])
+                    ts, count = positions[stream_names[idx]]
+                    if event['timestamp'] == ts:
+                        positions[stream_names[idx]] = Position(timestamp=ts, skip=count + 1)
+                    else:
+                        positions[stream_names[idx]] = Position(timestamp=event['timestamp'], skip=1)
+            else:
+                sys.stdout.flush()
+            if state == LogState.COMPLETE:
+                break
+
+            time.sleep(check_interval)
+
+            sec = sec + check_interval
+            if max_ingestion_time and sec > max_ingestion_time:
+                # ensure that the job gets killed if the max ingestion time is exceeded
+                raise AirflowException("SageMaker job took more than "
+                                       "%s seconds", max_ingestion_time)
+
+            if state == LogState.JOB_COMPLETE:
+                state = LogState.COMPLETE
+            elif time.time() - last_describe_job_call >= 30:
+                description = self.describe_training_job(job_name)
+                last_describe_job_call = time.time()
+
+                if secondary_training_status_changed(description, last_description):
+                    self.log.info(secondary_training_status_message(description, last_description))
+                    last_description = description
+
+                status = description['TrainingJobStatus']
+
+                if status not in non_terminal_states:
+                    state = LogState.JOB_COMPLETE
+
+        if wait_for_completion:
+            status = description['TrainingJobStatus']
+            if status in failed_states:
+                reason = description.get('FailureReason', '(No reason provided)')
+                raise AirflowException('Error training {}: {} Reason: {}'.format(job_name, status, reason))
+            billable_time = (description['TrainingEndTime'] - description['TrainingStartTime']) * instance_count
+            self.log.info('Billable seconds:{}'.format(int(billable_time.total_seconds()) + 1))

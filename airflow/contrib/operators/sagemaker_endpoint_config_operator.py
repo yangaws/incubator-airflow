@@ -87,7 +87,7 @@ class SageMakerEndpointConfigOperator(BaseOperator):
                 'Sagemaker endpoint config creation failed: %s' % response)
         else:
             return {
-                'config': self.config,
-                'information': sagemaker.describe_endpoint_config(
+                'EndpointConfig': sagemaker.describe_endpoint_config(
                     self.config['EndpointConfigName']
-                )}
+                )
+            }

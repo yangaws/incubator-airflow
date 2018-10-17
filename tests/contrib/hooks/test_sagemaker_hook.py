@@ -19,6 +19,8 @@
 #
 
 import unittest
+import time
+from datetime import datetime
 
 try:
     from unittest import mock
@@ -29,7 +31,8 @@ except ImportError:
         mock = None
 
 from airflow import configuration
-from airflow.contrib.hooks.sagemaker_hook import SageMakerHook
+from airflow.contrib.hooks.sagemaker_hook import (SageMakerHook, secondary_training_status_changed,
+                                                  secondary_training_status_message)
 from airflow.hooks.S3_hook import S3Hook
 from airflow.exceptions import AirflowException
 
@@ -173,34 +176,58 @@ create_endpoint_params = {
 
 update_endpoint_params = create_endpoint_params
 
-DESCRIBE_TRAINING_INPROGRESS_RETURN = {
-    'TrainingJobStatus': 'InProgress',
-    'ResponseMetadata': {
-        'HTTPStatusCode': 200,
-    }
-}
-
 DESCRIBE_TRAINING_COMPELETED_RETURN = {
-    'TrainingJobStatus': 'Compeleted',
-    'ResponseMetadata': {
-        'HTTPStatusCode': 200,
-    }
-}
-
-DESCRIBE_TRAINING_FAILED_RETURN = {
-    'TrainingJobStatus': 'Failed',
-    'ResponseMetadata': {
-        'HTTPStatusCode': 200,
+    'TrainingJobStatus': 'Completed',
+    'ResourceConfig': {
+        'InstanceCount': 1,
+        'InstanceType': 'ml.c4.xlarge',
+        'VolumeSizeInGB': 10
     },
-    'FailureReason': 'Unknown'
-}
-
-DESCRIBE_TRAINING_STOPPING_RETURN = {
-    'TrainingJobStatus': 'Stopping',
+    'TrainingStartTime': datetime(2018, 2, 17, 7, 15, 0, 103000),
+    'TrainingEndTime': datetime(2018, 2, 17, 7, 19, 34, 953000),
     'ResponseMetadata': {
         'HTTPStatusCode': 200,
     }
 }
+
+DESCRIBE_TRAINING_INPROGRESS_RETURN = dict(DESCRIBE_TRAINING_COMPELETED_RETURN)
+DESCRIBE_TRAINING_INPROGRESS_RETURN.update({'TrainingJobStatus': 'InProgress'})
+
+DESCRIBE_TRAINING_FAILED_RETURN = dict(DESCRIBE_TRAINING_COMPELETED_RETURN)
+DESCRIBE_TRAINING_FAILED_RETURN.update({'TrainingJobStatus': 'Failed',
+                                        'FailureReason': 'Unknown'})
+
+DESCRIBE_TRAINING_STOPPING_RETURN = dict(DESCRIBE_TRAINING_COMPELETED_RETURN)
+DESCRIBE_TRAINING_STOPPING_RETURN.update({'TrainingJobStatus': 'Stopping'})
+
+message = 'message'
+status = 'status'
+SECONDARY_STATUS_DESCRIPTION_1 = {
+    'SecondaryStatusTransitions': [{'StatusMessage': message, 'Status': status}]
+}
+SECONDARY_STATUS_DESCRIPTION_2 = {
+    'SecondaryStatusTransitions': [{'StatusMessage': 'different message', 'Status': status}]
+}
+
+DEFAULT_LOG_STREAMS = {'logStreams': [{'logStreamName': job_name + '/xxxxxxxxx'}]}
+LIFECYCLE_LOG_STREAMS = [DEFAULT_LOG_STREAMS,
+                         DEFAULT_LOG_STREAMS,
+                         DEFAULT_LOG_STREAMS,
+                         DEFAULT_LOG_STREAMS,
+                         DEFAULT_LOG_STREAMS,
+                         DEFAULT_LOG_STREAMS]
+
+DEFAULT_LOG_EVENTS = [{'nextForwardToken': None, 'events': [{'timestamp': 1, 'message': 'hi there #1'}]},
+                      {'nextForwardToken': None, 'events': []}]
+STREAM_LOG_EVENTS = [{'nextForwardToken': None, 'events': [{'timestamp': 1, 'message': 'hi there #1'}]},
+                     {'nextForwardToken': None, 'events': []},
+                     {'nextForwardToken': None, 'events': [{'timestamp': 1, 'message': 'hi there #1'},
+                                                           {'timestamp': 2, 'message': 'hi there #2'}]},
+                     {'nextForwardToken': None, 'events': []},
+                     {'nextForwardToken': None, 'events': [{'timestamp': 2, 'message': 'hi there #2'},
+                                                           {'timestamp': 2, 'message': 'hi there #2a'},
+                                                           {'timestamp': 3, 'message': 'hi there #3'}]},
+                     {'nextForwardToken': None, 'events': []}]
 
 
 def get_image():
@@ -295,7 +322,8 @@ class TestSageMakerHook(unittest.TestCase):
                              )
         self.assertEqual(hook.aws_conn_id, 'sagemaker_test_conn_id')
         mock_get_client.assert_called_once_with('sagemaker',
-                                                region_name='us-east-1'
+                                                region_name='us-east-1',
+                                                config=None
                                                 )
 
     @mock.patch.object(SageMakerHook, 'check_training_config')
@@ -309,7 +337,8 @@ class TestSageMakerHook(unittest.TestCase):
         mock_client.return_value = mock_session
         hook = SageMakerHook(aws_conn_id='sagemaker_test_conn_id')
         response = hook.create_training_job(create_training_params,
-                                            wait_for_completion=False)
+                                            wait_for_completion=False,
+                                            print_log=False)
         mock_session.create_training_job.assert_called_once_with(**create_training_params)
         self.assertEqual(response, test_arn_return)
 
@@ -329,7 +358,7 @@ class TestSageMakerHook(unittest.TestCase):
         mock_client.return_value = mock_session
         hook = SageMakerHook(aws_conn_id='sagemaker_test_conn_id_1')
         hook.create_training_job(create_training_params, wait_for_completion=True,
-                                 check_interval=5)
+                                 print_log=False, check_interval=5)
         self.assertEqual(mock_session.describe_training_job.call_count, 3)
 
     @mock.patch.object(SageMakerHook, 'check_training_config')
@@ -350,7 +379,7 @@ class TestSageMakerHook(unittest.TestCase):
         hook = SageMakerHook(aws_conn_id='sagemaker_test_conn_id_1')
         self.assertRaises(AirflowException, hook.create_training_job,
                           create_training_params, wait_for_completion=True,
-                          check_interval=5)
+                          print_log=False, check_interval=5)
         self.assertEqual(mock_session.describe_training_job.call_count, 3)
 
     @mock.patch.object(SageMakerHook, 'check_tuning_config')
@@ -513,6 +542,54 @@ class TestSageMakerHook(unittest.TestCase):
         mock_session.describe_endpoint.\
             assert_called_once_with(EndpointName=endpoint_name)
         self.assertEqual(response, 'InProgress')
+
+    def test_secondary_training_status_changed_true(self):
+        changed = secondary_training_status_changed(SECONDARY_STATUS_DESCRIPTION_1, SECONDARY_STATUS_DESCRIPTION_2)
+        self.assertTrue(changed)
+
+    def test_secondary_training_status_changed_false(self):
+        changed = secondary_training_status_changed(SECONDARY_STATUS_DESCRIPTION_1, SECONDARY_STATUS_DESCRIPTION_1)
+        self.assertFalse(changed)
+
+    def test_secondary_training_status_message_status_changed(self):
+        now = datetime.now()
+        SECONDARY_STATUS_DESCRIPTION_1['LastModifiedTime'] = now
+        expected = '{} {} - {}'.format(
+            datetime.utcfromtimestamp(time.mktime(now.timetuple())).strftime('%Y-%m-%d %H:%M:%S'),
+            status,
+            message
+        )
+        self.assertEqual(
+            secondary_training_status_message(SECONDARY_STATUS_DESCRIPTION_1, SECONDARY_STATUS_DESCRIPTION_2),
+            expected)
+
+    @mock.patch.object(SageMakerHook, 'check_training_config')
+    @mock.patch.object(SageMakerHook, 'get_log_conn')
+    @mock.patch.object(SageMakerHook, 'get_conn')
+    def test_training_with_logs(self, mock_client, mock_log_client, mock_check_training):
+        mock_check_training.return_value = True
+        mock_session = mock.Mock()
+        mock_log_session = mock.Mock()
+        attrs = {'create_training_job.return_value':
+                 test_arn_return,
+                 'describe_training_job.side_effect':
+                     [DESCRIBE_TRAINING_INPROGRESS_RETURN,
+                      DESCRIBE_TRAINING_STOPPING_RETURN,
+                      DESCRIBE_TRAINING_COMPELETED_RETURN]
+                 }
+        log_attrs = {'describe_log_streams.side_effect':
+                     LIFECYCLE_LOG_STREAMS,
+                     'get_log_events.side_effect':
+                     STREAM_LOG_EVENTS
+                     }
+        mock_session.configure_mock(**attrs)
+        mock_log_session.configure_mock(**log_attrs)
+        mock_client.return_value = mock_session
+        mock_log_client.return_value = mock_log_session
+        hook = SageMakerHook(aws_conn_id='sagemaker_test_conn_id_1')
+        hook.create_training_job(create_training_params, wait_for_completion=True,
+                                 print_log=True, check_interval=1)
+        self.assertEqual(mock_session.describe_training_job.call_count, 3)
 
 
 if __name__ == '__main__':

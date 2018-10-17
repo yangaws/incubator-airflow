@@ -128,10 +128,10 @@ class SageMakerTransformOperator(BaseOperator):
                 'Sagemaker transform Job creation failed: %s' % response)
         else:
             return {
-                'config': self.config,
-                'model_information': sagemaker.describe_model(
+                'Model': sagemaker.describe_model(
                     transform_config['ModelName']
                 ),
-                'transform_job_information': sagemaker.describe_transform_job(
+                'Transform': sagemaker.describe_transform_job(
                     transform_config['TransformJobName']
-                )}
+                )
+            }

@@ -130,6 +130,7 @@ class TestSageMakerTrainingOperator(unittest.TestCase):
         self.sagemaker.execute(None)
         mock_training.assert_called_once_with(create_training_params,
                                               wait_for_completion=False,
+                                              print_log=True,
                                               check_interval=5,
                                               max_ingestion_time=None
                                               )
