@@ -73,6 +73,8 @@ class SageMakerModelOperator(BaseOperator):
         )
 
         self.config = sagemaker.configure_s3_resources(self.config)
+        self.config['ExecutionRoleArn'] = \
+            sagemaker.expand_role(self.config['ExecutionRoleArn'])
 
         self.log.info(
             'After evaluation the config is:\n {}'.format(self.config)

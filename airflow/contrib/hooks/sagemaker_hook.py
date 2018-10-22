@@ -147,6 +147,12 @@ class SageMakerHook(AwsHook):
         self.iam_conn = self.get_iam_conn()
         self.s3_hook = S3Hook(aws_conn_id=self.aws_conn_id)
 
+    def expand_role(self, role):
+        if '/' in role:
+            return role
+        else:
+            return self.iam_conn.get_role(RoleName=role)['Role']['Arn']
+
     def tar_and_s3_upload(self, path, key, bucket):
         """
         Tar the local file or directory and upload to s3

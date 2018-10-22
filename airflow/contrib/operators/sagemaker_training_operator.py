@@ -111,6 +111,8 @@ class SageMakerTrainingOperator(BaseOperator):
 
         self.config = sagemaker.configure_s3_resources(self.config)
         self.evaluate()
+        self.config['RoleArn'] = \
+            sagemaker.expand_role(self.config['RoleArn'])
 
         self.log.info(
             'After evaluation the config is:\n {}'.format(

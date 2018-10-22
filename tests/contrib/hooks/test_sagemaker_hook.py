@@ -37,7 +37,7 @@ from airflow.hooks.S3_hook import S3Hook
 from airflow.exceptions import AirflowException
 
 
-role = 'test-role'
+role = 'arn:aws:iam:role/test-role'
 
 path = 'local/data'
 bucket = 'test-bucket'
@@ -254,6 +254,25 @@ class TestSageMakerHook(unittest.TestCase):
 
     def setUp(self):
         configuration.load_test_config()
+
+    @mock.patch.object(SageMakerHook, 'get_iam_conn')
+    def test_expand_role(self, mock_iam):
+        mock_session = mock.Mock()
+        some_role = 'some-role'
+        role_description = {
+            'Role': {
+                'Arn': 'test-arn'
+            }
+        }
+        attrs = {'get_role.return_value':
+                 role_description}
+        mock_session.configure_mock(**attrs)
+        mock_iam.return_value = mock_session
+        hook = SageMakerHook(aws_conn_id='sagemaker_test_conn_id')
+        arn = hook.expand_role(some_role)
+        mock_session.get_role.\
+            assert_called_once_with(RoleName=some_role)
+        self.assertEqual(arn, role_description['Role']['Arn'])
 
     @mock.patch.object(S3Hook, 'create_bucket')
     @mock.patch.object(S3Hook, 'load_file')

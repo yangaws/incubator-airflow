@@ -32,7 +32,7 @@ from airflow.contrib.operators.sagemaker_tuning_operator \
     import SageMakerTuningOperator
 from airflow.exceptions import AirflowException
 
-role = 'test-role'
+role = 'arn:aws:iam:role/test-role'
 
 bucket = 'test-bucket'
 
@@ -79,7 +79,7 @@ create_tuning_params = {'HyperParameterTuningJobName': job_name,
                                     'TrainingImage': image,
                                     'TrainingInputMode': 'File'
                                 },
-                            'RoleArn': 'string',
+                            'RoleArn': role,
                             'InputDataConfig':
                                 [
                                     {

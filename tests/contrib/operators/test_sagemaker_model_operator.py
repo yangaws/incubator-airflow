@@ -32,7 +32,7 @@ from airflow.contrib.operators.sagemaker_model_operator \
     import SageMakerModelOperator
 from airflow.exceptions import AirflowException
 
-role = 'test-role'
+role = 'arn:aws:iam:role/test-role'
 
 bucket = 'test-bucket'
 
