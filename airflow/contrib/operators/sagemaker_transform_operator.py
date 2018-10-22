@@ -17,116 +17,140 @@
 # specific language governing permissions and limitations
 # under the License.
 
+import json
+
 from airflow.contrib.hooks.sagemaker_hook import SageMakerHook
 from airflow.models import BaseOperator
 from airflow.utils.decorators import apply_defaults
 from airflow.exceptions import AirflowException
 
 
-class SageMakerCreateTransformJobOperator(BaseOperator):
+class SageMakerTransformOperator(BaseOperator):
     """
        Initiate a SageMaker transform
 
        This operator returns The ARN of the model created in Amazon SageMaker
 
-       :param sagemaker_conn_id: The SageMaker connection ID to use.
-       :type sagemaker_conn_id: string
-       :param transform_job_config:
+       :param config:
        The configuration necessary to start a transform job (templated)
-       :type transform_job_config: dict
+       :type config: dict
        :param model_config:
-       The configuration necessary to create a model, the default is none
-       which means that user should provide a created model in transform_job_config
-       If given, will be used to create a model before creating transform job
+       The configuration necessary to create a SageMaker model, the default is none
+       which means the SageMaker model used for the SageMaker transform job already exists.
+       If given, it will be used to create a SageMaker model before creating
+       the SageMaker transform job
        :type model_config: dict
-       :param use_db_config: Whether or not to use db config
-       associated with sagemaker_conn_id.
-       If set to true, will automatically update the transform config
-       with what's in db, so the db config doesn't need to
-       included everything, but what's there does replace the ones
-       in the transform_job_config, so be careful
-       :type use_db_config: bool
        :param region_name: The AWS region_name
        :type region_name: string
+       :param aws_conn_id: The AWS connection ID to use.
+       :type aws_conn_id: string
        :param wait_for_completion: if the program should keep running until job finishes
        :type wait_for_completion: bool
        :param check_interval: if wait is set to be true, this is the time interval
        in seconds which the operator will check the status of the transform job
        :type check_interval: int
        :param max_ingestion_time: if wait is set to be true, the operator will fail
-       if the transform job hasn't finish within the max_ingestion_time
+       if the transform job hasn't finish within the max_ingestion_time in seconds
        (Caution: be careful to set this parameters because transform can take very long)
        :type max_ingestion_time: int
-       :param aws_conn_id: The AWS connection ID to use.
-       :type aws_conn_id: string
 
        **Example**:
            The following operator would start a transform job when executed
 
             sagemaker_transform =
-               SageMakerCreateTransformJobOperator(
+               SageMakerTransformOperator(
                    task_id='sagemaker_transform',
-                   transform_job_config=config_transform,
-                   model_config=config_model,
+                   config=transform_config,
+                   model_config=model_config,
                    region_name='us-west-2'
-                   sagemaker_conn_id='sagemaker_customers_conn',
-                   use_db_config=True,
                    aws_conn_id='aws_customers_conn'
                )
        """
 
-    template_fields = ['transform_job_config']
+    template_fields = ['config', 'region_name']
     template_ext = ()
     ui_color = '#ededed'
 
     @apply_defaults
     def __init__(self,
-                 sagemaker_conn_id=None,
-                 transform_job_config=None,
-                 model_config=None,
-                 use_db_config=False,
+                 config,
                  region_name=None,
+                 aws_conn_id='sagemaker_default',
                  wait_for_completion=True,
-                 check_interval=2,
+                 check_interval=30,
                  max_ingestion_time=None,
                  *args, **kwargs):
-        super(SageMakerCreateTransformJobOperator, self).__init__(*args, **kwargs)
+        super(SageMakerTransformOperator, self).__init__(*args, **kwargs)
 
-        self.sagemaker_conn_id = sagemaker_conn_id
-        self.transform_job_config = transform_job_config
-        self.model_config = model_config
-        self.use_db_config = use_db_config
+        self.aws_conn_id = aws_conn_id
+        self.config = config
         self.region_name = region_name
         self.wait_for_completion = wait_for_completion
         self.check_interval = check_interval
         self.max_ingestion_time = max_ingestion_time
 
+    def evaluate(self):
+        if 'Transform'in self.config:
+            config = self.config['Transform']
+        else:
+            config = self.config
+        config['TransformResources']['InstanceCount'] = \
+            int(config['TransformResources']['InstanceCount'])
+        config['MaxConcurrentTransforms'] = \
+            int(config['MaxConcurrentTransforms'])
+        config['MaxPayloadInMB'] = int(config['MaxPayloadInMB'])
+
     def execute(self, context):
         sagemaker = SageMakerHook(
-            sagemaker_conn_id=self.sagemaker_conn_id,
-            use_db_config=self.use_db_config,
-            region_name=self.region_name,
-            check_interval=self.check_interval,
-            max_ingestion_time=self.max_ingestion_time
+            aws_conn_id=self.aws_conn_id,
+            region_name=self.region_name
         )
-
-        if self.model_config:
-            self.log.info(
-                "Creating SageMaker Model %s for transform job"
-                % self.model_config['ModelName']
-            )
-            sagemaker.create_model(self.model_config)
 
         self.log.info(
-            "Creating SageMaker transform Job %s."
-            % self.transform_job_config['TransformJobName']
+            'Evaluating the config'
+        )
+
+        self.config = sagemaker.configure_s3_resources(self.config)
+        self.evaluate()
+
+        self.log.info(
+            'After evaluation the config is:\n {}'.format(
+                json.dumps(self.config, sort_keys=True, indent=4, separators=(',', ': '))
+            )
+        )
+
+        model_config = self.config['Model']\
+            if 'Model' in self.config else None
+        transform_config = self.config['Transform']\
+            if 'Transform' in self.config else self.config
+        transform_config['TransformResources']['InstanceCount'] = \
+            int(transform_config['TransformResources']['InstanceCount'])
+        if model_config:
+            self.log.info(
+                'Creating SageMaker Model %s for transform job'
+                % model_config['ModelName']
+            )
+            sagemaker.create_model(model_config)
+
+        self.log.info(
+            'Creating SageMaker transform Job %s.'
+            % transform_config['TransformJobName']
         )
         response = sagemaker.create_transform_job(
-            self.transform_job_config,
-            wait_for_completion=self.wait_for_completion)
+            transform_config,
+            wait_for_completion=self.wait_for_completion,
+            check_interval=self.check_interval,
+            max_ingestion_time=self.max_ingestion_time)
         if not response['ResponseMetadata']['HTTPStatusCode'] \
            == 200:
             raise AirflowException(
                 'Sagemaker transform Job creation failed: %s' % response)
         else:
-            return response
+            return {
+                'Model': sagemaker.describe_model(
+                    transform_config['ModelName']
+                ),
+                'Transform': sagemaker.describe_transform_job(
+                    transform_config['TransformJobName']
+                )
+            }

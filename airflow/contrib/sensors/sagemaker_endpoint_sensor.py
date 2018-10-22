@@ -22,33 +22,30 @@ from airflow.contrib.sensors.sagemaker_base_sensor import SageMakerBaseSensor
 from airflow.utils.decorators import apply_defaults
 
 
-class SageMakerTransformSensor(SageMakerBaseSensor):
+class SageMakerEndpointSensor(SageMakerBaseSensor):
     """
-    Asks for the state of the transform state until it reaches a terminal state.
-    The sensor will error if the job errors, throwing a AirflowException
-    containing the failure reason.
+    Asks for the state of the endpoint state until it reaches a terminal state.
+    If it fails the sensor errors, failing the task.
 
-    :param job_name: job_name of the transform job instance to check the state of
-    :type job_name: string
-    :param region_name: The AWS region_name
-    :type region_name: string
+    :param job_name: job_name of the endpoint instance to check the state of
+    :type job_name: str
     """
 
-    template_fields = ['job_name', 'region_name']
+    template_fields = ['endpoint_name', 'region_name']
     template_ext = ()
 
     @apply_defaults
     def __init__(self,
-                 job_name,
+                 endpoint_name,
                  region_name=None,
                  *args,
                  **kwargs):
-        super(SageMakerTransformSensor, self).__init__(*args, **kwargs)
-        self.job_name = job_name
+        super(SageMakerEndpointSensor, self).__init__(*args, **kwargs)
+        self.endpoint_name = endpoint_name
         self.region_name = region_name
 
     def non_terminal_states(self):
-        return SageMakerHook.non_terminal_states
+        return SageMakerHook.endpoint_non_terminal_states
 
     def failed_states(self):
         return SageMakerHook.failed_states
@@ -59,11 +56,11 @@ class SageMakerTransformSensor(SageMakerBaseSensor):
             region_name=self.region_name
         )
 
-        self.log.info('Poking Sagemaker Transform Job %s', self.job_name)
-        return sagemaker.describe_transform_job(self.job_name)
+        self.log.info('Poking Sagemaker Endpoint %s', self.endpoint_name)
+        return sagemaker.describe_endpoint(self.endpoint_name)
 
     def get_failed_reason_from_response(self, response):
         return response['FailureReason']
 
     def state_from_response(self, response):
-        return response['TransformJobStatus']
+        return response['EndpointStatus']
