@@ -61,6 +61,8 @@ class SageMakerDeployOperator(BaseOperator):
                )
     """
 
+    template_fields = ['config', 'region_name']
+    template_ext = ()
     ui_color = '#ededed'
 
     @apply_defaults
@@ -83,6 +85,11 @@ class SageMakerDeployOperator(BaseOperator):
         self.max_ingestion_time = max_ingestion_time
         self.operation = operation.lower()
 
+    def evaluate(self):
+        for variant in self.config['EndpointConfig']['ProductionVariants']:
+            variant['InitialInstanceCount'] = \
+                int(variant['InitialInstanceCount'])
+
     def execute(self, context):
         sagemaker = SageMakerHook(
             aws_conn_id=self.aws_conn_id,
@@ -90,13 +97,14 @@ class SageMakerDeployOperator(BaseOperator):
         )
 
         self.log.info(
-            "Evaluating the config and doing required s3_operations"
+            'Evaluating the config and doing required s3_operations'
         )
 
-        self.config = sagemaker.evaluate_and_configure_s3(self.config)
+        self.config = sagemaker.configure_s3_resources(self.config)
+        self.evaluate()
 
         self.log.info(
-            "After evaluation the config is:\n {}".format(self.config)
+            'After evaluation the config is:\n {}'.format(self.config)
         )
 
         model_info = self.config['Model']
@@ -104,14 +112,14 @@ class SageMakerDeployOperator(BaseOperator):
         endpoint_info = self.config['Endpoint']
 
         self.log.info(
-            "Creating SageMaker model %s."
+            'Creating SageMaker model %s.'
             % model_info['ModelName']
         )
 
         sagemaker.create_model(model_info)
 
         self.log.info(
-            "Creating endpoint config %s."
+            'Creating endpoint config %s.'
             % endpoint_config_info['EndpointConfigName']
         )
 
@@ -126,10 +134,10 @@ class SageMakerDeployOperator(BaseOperator):
         else:
             raise AirflowException(
                 'Invalid value. '
-                'Argument operation has to be one of "create" and "update')
+                'Argument operation has to be one of "create" and "update"')
 
         self.log.info(
-            "{} endpoint {}.".format(log_str, endpoint_info['EndpointName'])
+            '{} endpoint {}.'.format(log_str, endpoint_info['EndpointName'])
         )
 
         response = sagemaker_operation(

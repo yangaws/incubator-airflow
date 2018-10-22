@@ -53,8 +53,8 @@ create_tuning_params = {'HyperParameterTuningJobName': job_name,
                                 'MetricName': 'test_metric'
                             },
                             'ResourceLimits': {
-                                'MaxNumberOfTrainingJobs': 123,
-                                'MaxParallelTrainingJobs': 123
+                                'MaxNumberOfTrainingJobs': '123',
+                                'MaxParallelTrainingJobs': '123'
                             },
                             'ParameterRanges': {
                                 'IntegerParameterRanges': [
@@ -102,9 +102,9 @@ create_tuning_params = {'HyperParameterTuningJobName': job_name,
                                 },
                             'ResourceConfig':
                                 {
-                                    'InstanceCount': 2,
+                                    'InstanceCount': '2',
                                     'InstanceType': 'ml.c4.8xlarge',
-                                    'VolumeSizeInGB': 50
+                                    'VolumeSizeInGB': '50'
                                 },
                             'StoppingCondition': dict(MaxRuntimeInSeconds=60 * 60)
                         }
@@ -148,6 +148,21 @@ class TestSageMakerTuningOperator(unittest.TestCase):
             aws_conn_id='sagemaker_test_conn',
             region_name='us-east-1'
         )
+
+    def test_evaluate(self):
+        self.sagemaker.evaluate()
+        self.assertEqual(self.sagemaker.config['TrainingJobDefinition']['ResourceConfig']['InstanceCount'],
+                         int(self.sagemaker.config['TrainingJobDefinition']['ResourceConfig']['InstanceCount']))
+        self.assertEqual(self.sagemaker.config['TrainingJobDefinition']['ResourceConfig']['VolumeSizeInGB'],
+                         int(self.sagemaker.config['TrainingJobDefinition']['ResourceConfig']['VolumeSizeInGB']))
+        self.assertEqual(self.sagemaker.config['HyperParameterTuningJobConfig']['ResourceLimits']
+                         ['MaxNumberOfTrainingJobs'],
+                         int(self.sagemaker.config['HyperParameterTuningJobConfig']['ResourceLimits']
+                             ['MaxNumberOfTrainingJobs']))
+        self.assertEqual(self.sagemaker.config['HyperParameterTuningJobConfig']['ResourceLimits']
+                         ['MaxParallelTrainingJobs'],
+                         int(self.sagemaker.config['HyperParameterTuningJobConfig']['ResourceLimits']
+                             ['MaxParallelTrainingJobs']))
 
     @mock.patch.object(SageMakerHook, 'get_conn')
     @mock.patch.object(SageMakerHook, 'create_tuning_job')

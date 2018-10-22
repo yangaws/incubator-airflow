@@ -63,92 +63,14 @@ def some(arr):
     return functools.reduce(lambda x, y: x or (y is not None), arr, False)
 
 
-def multi_stream_iter(client, log_group, streams, positions=None):
-    """
-    Iterate over the available events coming from a set of log streams in a single log group
-    interleaving the events from each stream so they're yielded in timestamp order.
-
-    :param client: The Boto client for CloudWatch logs.
-    :type client: boto3.CloudWatchLogs.Client
-    :param log_group: The name of the log group.
-    :type log_group: str
-    :param streams: A list of the log stream names. The position of the stream in this list is
-    the stream number.
-    :type streams: list
-    :param positions: A list of pairs of (timestamp, skip) which represents the last record
-    read from each stream.
-    :type positions: list
-
-    :return: A tuple of (stream number, cloudwatch log event).
-    """
-    positions = positions or {s: Position(timestamp=0, skip=0) for s in streams}
-    event_iters = [log_stream(client, log_group, s, positions[s].timestamp, positions[s].skip) for s in streams]
-    events = [next(s) if s else None for s in event_iters]
-
-    while some(events):
-        i = argmin(events, lambda x: x['timestamp'] if x else 9999999999)
-        yield (i, events[i])
-        try:
-            events[i] = next(event_iters[i])
-        except StopIteration:
-            events[i] = None
-
-
-def log_stream(client, log_group, stream_name, start_time=0, skip=0):
-    """
-    A generator for log items in a single stream. This will yield all the
-    items that are available at the current moment.
-
-    :param client: The Boto client for CloudWatch logs.
-    :type client: boto3.CloudWatchLogs.Client
-    :param log_group: The name of the log group.
-    :type log_group: str
-    :param stream_name: The name of the specific stream.
-    :type stream_name: str
-    :param start_time: The time stamp value to start reading the logs from (default: 0).
-    :type start_time: int
-    :param skip: The number of log entries to skip at the start (default: 0).
-    This is for when there are multiple entries at the same timestamp.
-    :type skip: int
-
-    :return:A CloudWatch log event with the following key-value pairs:
-           'timestamp' (int): The time of the event.
-           'message' (str): The log event data.
-           'ingestionTime' (int): The time the event was ingested.
-    """
-
-    next_token = None
-
-    event_count = 1
-    while event_count > 0:
-        if next_token is not None:
-            token_arg = {'nextToken': next_token}
-        else:
-            token_arg = {}
-
-        response = client.get_log_events(logGroupName=log_group, logStreamName=stream_name, startTime=start_time,
-                                         startFromHead=True, **token_arg)
-        next_token = response['nextForwardToken']
-        events = response['events']
-        event_count = len(events)
-        if event_count > skip:
-            events = events[skip:]
-            skip = 0
-        else:
-            skip = skip - event_count
-            events = []
-        for ev in events:
-            yield ev
-
-
 def secondary_training_status_changed(current_job_description, prev_job_description):
     """
     Returns true if training job's secondary status message has changed.
 
-    :param current_job_desc: Current job description, returned from DescribeTrainingJob call.
-    :type dict
-    :param prev_job_desc: Previous job description, returned from DescribeTrainingJob call.
-    :type dict
+    :param current_job_description: Current job description, returned from DescribeTrainingJob call.
+    :type current_job_description: dict
+    :param prev_job_description: Previous job description, returned from DescribeTrainingJob call.
+    :type prev_job_description: dict
 
     :return: Whether the secondary status message of a training job changed or not.
     """
@@ -220,6 +142,9 @@ class SageMakerHook(AwsHook):
         super(SageMakerHook, self).__init__(*args, **kwargs)
         self.region_name = region_name
         self.conn = self.get_conn()
+        config = botocore.config.Config(retries={'max_attempts': 15})
+        self.log_conn = self.get_log_conn(config)
+        self.iam_conn = self.get_iam_conn()
         self.s3_hook = S3Hook(aws_conn_id=self.aws_conn_id)
 
     def tar_and_s3_upload(self, path, key, bucket):
@@ -245,24 +170,7 @@ class SageMakerHook(AwsHook):
             temp_file.seek(0)
             self.s3_hook.load_file_obj(temp_file, key, bucket, True)
 
-    def evaluate(self, config):
-        """
-        Evaluate the config of SageMaker operation
-
-        :param config: config of SageMaker operation
-        :type config: dict
-        :return: dict
-        """
-        if isinstance(config, list):
-            return [self.evaluate(element) for element in config]
-        if isinstance(config, dict):
-            return {key: self.evaluate(config[key]) for key in config}
-        if callable(config):
-            return self.evaluate(config())
-        else:
-            return config
-
-    def evaluate_and_configure_s3(self, config):
+    def configure_s3_resources(self, config):
         """
         Evaluate the config of SageMaker operation and
         execute related s3 operations
@@ -272,10 +180,10 @@ class SageMakerHook(AwsHook):
         :return: dict
         """
         s3_operations = config.pop('S3Operations', None)
-        config = self.evaluate(config)
+
         if s3_operations is not None:
-            create_bucket_ops = s3_operations['S3CreateBucket']
-            upload_ops = s3_operations['S3Upload']
+            create_bucket_ops = s3_operations.get('S3CreateBucket')
+            upload_ops = s3_operations.get('S3Upload')
             if create_bucket_ops:
                 for op in create_bucket_ops:
                     self.s3_hook.create_bucket(bucket_name=op['Bucket'],
@@ -346,10 +254,91 @@ class SageMakerHook(AwsHook):
     def get_log_conn(self, config=None):
         """
         Establish an AWS connection for retrieving logs during training
-        :return: a boto CloudWatchLog client
+        :return: a boto3 CloudWatchLog client
         """
         return self.get_client_type('logs', region_name=self.region_name,
                                     config=config)
+
+    def get_iam_conn(self, config=None):
+        """
+        Establish an AWS connection for retrieving iam roles during training
+        :return: a boto3 IAM client
+        """
+        return self.get_client_type('iam', region_name=self.region_name,
+                                    config=config)
+
+    def log_stream(self, log_group, stream_name, start_time=0, skip=0):
+        """
+        A generator for log items in a single stream. This will yield all the
+        items that are available at the current moment.
+
+        :param log_group: The name of the log group.
+        :type log_group: str
+        :param stream_name: The name of the specific stream.
+        :type stream_name: str
+        :param start_time: The time stamp value to start reading the logs from (default: 0).
+        :type start_time: int
+        :param skip: The number of log entries to skip at the start (default: 0).
+        This is for when there are multiple entries at the same timestamp.
+        :type skip: int
+
+        :return:A CloudWatch log event with the following key-value pairs:
+               'timestamp' (int): The time of the event.
+               'message' (str): The log event data.
+               'ingestionTime' (int): The time the event was ingested.
+        """
+
+        next_token = None
+
+        event_count = 1
+        while event_count > 0:
+            if next_token is not None:
+                token_arg = {'nextToken': next_token}
+            else:
+                token_arg = {}
+
+            response = self.log_conn.get_log_events(logGroupName=log_group, logStreamName=stream_name,
+                                                    startTime=start_time, startFromHead=True, **token_arg)
+            next_token = response['nextForwardToken']
+            events = response['events']
+            event_count = len(events)
+            if event_count > skip:
+                events = events[skip:]
+                skip = 0
+            else:
+                skip = skip - event_count
+                events = []
+            for ev in events:
+                yield ev
+
+    def multi_stream_iter(self, log_group, streams, positions=None):
+        """
+        Iterate over the available events coming from a set of log streams in a single log group
+        interleaving the events from each stream so they're yielded in timestamp order.
+
+        :param log_group: The name of the log group.
+        :type log_group: str
+        :param streams: A list of the log stream names. The position of the stream in this list is
+        the stream number.
+        :type streams: list
+        :param positions: A list of pairs of (timestamp, skip) which represents the last record
+        read from each stream.
+        :type positions: list
+
+        :return: A tuple of (stream number, cloudwatch log event).
+        """
+        positions = positions or {s: Position(timestamp=0, skip=0) for s in streams}
+        event_iters = [self.log_stream(log_group, s, positions[s].timestamp, positions[s].skip)
+                       for s in streams]
+        events = [next(s) if s else None for s in event_iters]
+
+        while some(events):
+            i = argmin(events, lambda x: x['timestamp'] if x else 9999999999)
+            yield (i, events[i])
+            try:
+                events[i] = next(event_iters[i])
+            except StopIteration:
+                events[i] = None
 
     def create_training_job(self, config, wait_for_completion=True, print_log=True,
                             check_interval=30, max_ingestion_time=None):
@@ -382,13 +371,19 @@ class SageMakerHook(AwsHook):
                                                 check_interval, max_ingestion_time
                                                 )
         elif wait_for_completion:
-            self.check_status(config['TrainingJobName'],
-                              SageMakerHook.non_terminal_states,
-                              SageMakerHook.failed_states,
-                              'TrainingJobStatus',
-                              self.describe_training_job,
-                              check_interval, max_ingestion_time
-                              )
+            describe_response = self.check_status(config['TrainingJobName'],
+                                                  SageMakerHook.non_terminal_states,
+                                                  SageMakerHook.failed_states,
+                                                  'TrainingJobStatus',
+                                                  self.describe_training_job,
+                                                  check_interval, max_ingestion_time
+                                                  )
+
+            billable_time = \
+                (describe_response['TrainingEndTime'] - describe_response['TrainingStartTime']) * \
+                describe_response['ResourceConfig']['InstanceCount']
+            self.log.info('Billable seconds:{}'.format(int(billable_time.total_seconds()) + 1))
+
         return response
 
     def create_tuning_job(self, config, wait_for_completion=True,
@@ -558,6 +553,55 @@ class SageMakerHook(AwsHook):
         return self.conn\
                    .describe_training_job(TrainingJobName=name)
 
+    def describe_training_job_with_log(self, job_name, non_terminal_states, positions, stream_names, instance_count,
+                                       state, last_description, last_describe_job_call):
+        log_group = '/aws/sagemaker/TrainingJobs'
+
+        if len(stream_names) < instance_count:
+            # Log streams are created whenever a container starts writing to stdout/err, so this list
+            # may be dynamic until we have a stream for every instance.
+            try:
+                streams = self.log_conn.describe_log_streams(logGroupName=log_group, logStreamNamePrefix=job_name + '/',
+                                                             orderBy='LogStreamName', limit=instance_count)
+                stream_names = [s['logStreamName'] for s in streams['logStreams']]
+                positions.update([(s, Position(timestamp=0, skip=0))
+                                  for s in stream_names if s not in positions])
+            except ClientError as e:
+                # On the very first training job run on an account, there's no log group until
+                # the container starts logging, so ignore any errors thrown about that
+                err = e.response.get('Error', {})
+                if err.get('Code', None) != 'ResourceNotFoundException':
+                    raise
+
+        if len(stream_names) > 0:
+            for idx, event in self.multi_stream_iter(log_group, stream_names, positions):
+                self.log.info(event['message'])
+                ts, count = positions[stream_names[idx]]
+                if event['timestamp'] == ts:
+                    positions[stream_names[idx]] = Position(timestamp=ts, skip=count + 1)
+                else:
+                    positions[stream_names[idx]] = Position(timestamp=event['timestamp'], skip=1)
+        else:
+            sys.stdout.flush()
+        if state == LogState.COMPLETE:
+            return state, last_description, last_describe_job_call
+
+        if state == LogState.JOB_COMPLETE:
+            state = LogState.COMPLETE
+        elif time.time() - last_describe_job_call >= 30:
+            description = self.describe_training_job(job_name)
+            last_describe_job_call = time.time()
+
+            if secondary_training_status_changed(description, last_description):
+                self.log.info(secondary_training_status_message(description, last_description))
+                last_description = description
+
+            status = description['TrainingJobStatus']
+
+            if status not in non_terminal_states:
+                state = LogState.JOB_COMPLETE
+        return state, last_description, last_describe_job_call
+
     def describe_tuning_job(self, name):
         """
         :param name: the name of the tuning job
@@ -641,39 +685,40 @@ class SageMakerHook(AwsHook):
         SageMaker jobs that run longer than this will fail. Setting this to
         None implies no timeout for any SageMaker job.
         :type max_ingestion_time: int
-        :return: None
+        :return: response of describe call after job is done
         """
         sec = 0
         running = True
 
         while running:
-            try:
-                response = describe_function(job_name)
-                status = response[key]
-                self.log.info("Job still running for %s seconds... "
-                              "current status is %s" % (sec, status))
-            except KeyError:
-                raise AirflowException("Could not get status of the SageMaker job")
-            except ClientError:
-                raise AirflowException("AWS request failed, check logs for more info")
-
-            if status in non_terminal_states:
-                running = True
-            elif status in failed_states:
-                raise AirflowException("SageMaker job failed because %s"
-                                       % response['FailureReason'])
-            else:
-                running = False
-
             time.sleep(check_interval)
             sec = sec + check_interval
 
             if max_ingestion_time and sec > max_ingestion_time:
                 # ensure that the job gets killed if the max ingestion time is exceeded
-                raise AirflowException("SageMaker job took more than "
-                                       "%s seconds", max_ingestion_time)
+                raise AirflowException('SageMaker job took more than '
+                                       '%s seconds', max_ingestion_time)
+            try:
+                response = describe_function(job_name)
+                status = response[key]
+                self.log.info('Job still running for %s seconds... '
+                              'current status is %s' % (sec, status))
+            except KeyError:
+                raise AirflowException('Could not get status of the SageMaker job')
+            except ClientError:
+                raise AirflowException('AWS request failed, check logs for more info')
+
+            if status in non_terminal_states:
+                running = True
+            elif status in failed_states:
+                raise AirflowException('SageMaker job failed because %s'
+                                       % response['FailureReason'])
+            else:
+                running = False
 
         self.log.info('SageMaker Job Compeleted')
+        response = describe_function(job_name)
+        return response
 
     def check_training_status_with_log(self, job_name, non_terminal_states, failed_states, wait_for_completion,
                                        check_interval, max_ingestion_time):
@@ -708,12 +753,6 @@ class SageMakerHook(AwsHook):
         stream_names = []  # The list of log streams
         positions = {}     # The current position in each stream, map of stream name -> position
 
-        # Increase retries allowed (from default of 4), as we don't want waiting for a training job
-        # to be interrupted by a transient exception.
-        config = botocore.config.Config(retries={'max_attempts': 15})
-        client = self.get_log_conn(config)
-        log_group = '/aws/sagemaker/TrainingJobs'
-
         job_already_completed = False if status in non_terminal_states else True
 
         state = LogState.TAILING if wait_for_completion and not job_already_completed else LogState.COMPLETE
@@ -741,63 +780,26 @@ class SageMakerHook(AwsHook):
         last_description = description
 
         while True:
-
-            if len(stream_names) < instance_count:
-                # Log streams are created whenever a container starts writing to stdout/err, so this list
-                # may be dynamic until we have a stream for every instance.
-                try:
-                    streams = client.describe_log_streams(logGroupName=log_group, logStreamNamePrefix=job_name + '/',
-                                                          orderBy='LogStreamName', limit=instance_count)
-                    stream_names = [s['logStreamName'] for s in streams['logStreams']]
-                    positions.update([(s, Position(timestamp=0, skip=0))
-                                      for s in stream_names if s not in positions])
-                except ClientError as e:
-                    # On the very first training job run on an account, there's no log group until
-                    # the container starts logging, so ignore any errors thrown about that
-                    err = e.response.get('Error', {})
-                    if err.get('Code', None) != 'ResourceNotFoundException':
-                        raise
-
-            if len(stream_names) > 0:
-                for idx, event in multi_stream_iter(client, log_group, stream_names, positions):
-                    self.log.info(event['message'])
-                    ts, count = positions[stream_names[idx]]
-                    if event['timestamp'] == ts:
-                        positions[stream_names[idx]] = Position(timestamp=ts, skip=count + 1)
-                    else:
-                        positions[stream_names[idx]] = Position(timestamp=event['timestamp'], skip=1)
-            else:
-                sys.stdout.flush()
-            if state == LogState.COMPLETE:
-                break
-
             time.sleep(check_interval)
 
             sec = sec + check_interval
             if max_ingestion_time and sec > max_ingestion_time:
                 # ensure that the job gets killed if the max ingestion time is exceeded
-                raise AirflowException("SageMaker job took more than "
-                                       "%s seconds", max_ingestion_time)
+                raise AirflowException('SageMaker job took more than '
+                                       '%s seconds', max_ingestion_time)
 
-            if state == LogState.JOB_COMPLETE:
-                state = LogState.COMPLETE
-            elif time.time() - last_describe_job_call >= 30:
-                description = self.describe_training_job(job_name)
-                last_describe_job_call = time.time()
-
-                if secondary_training_status_changed(description, last_description):
-                    self.log.info(secondary_training_status_message(description, last_description))
-                    last_description = description
-
-                status = description['TrainingJobStatus']
-
-                if status not in non_terminal_states:
-                    state = LogState.JOB_COMPLETE
+            state, last_description, last_describe_job_call = \
+                self.describe_training_job_with_log(job_name, SageMakerHook.non_terminal_states, positions,
+                                                    stream_names, instance_count, state, last_description,
+                                                    last_describe_job_call)
+            if state == LogState.COMPLETE:
+                break
 
         if wait_for_completion:
-            status = description['TrainingJobStatus']
+            status = last_description['TrainingJobStatus']
             if status in failed_states:
-                reason = description.get('FailureReason', '(No reason provided)')
+                reason = last_description.get('FailureReason', '(No reason provided)')
                 raise AirflowException('Error training {}: {} Reason: {}'.format(job_name, status, reason))
-            billable_time = (description['TrainingEndTime'] - description['TrainingStartTime']) * instance_count
+            billable_time = (last_description['TrainingEndTime'] - last_description['TrainingStartTime']) \
+                * instance_count
             self.log.info('Billable seconds:{}'.format(int(billable_time.total_seconds()) + 1))

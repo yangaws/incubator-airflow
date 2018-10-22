@@ -31,7 +31,7 @@ class SageMakerEndpointSensor(SageMakerBaseSensor):
     :type job_name: str
     """
 
-    template_fields = ['endpoint_name']
+    template_fields = ['endpoint_name', 'region_name']
     template_ext = ()
 
     @apply_defaults

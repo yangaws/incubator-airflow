@@ -41,7 +41,7 @@ create_endpoint_config_params = {
         {
             'VariantName': 'AllTraffic',
             'ModelName': model_name,
-            'InitialInstanceCount': 1,
+            'InitialInstanceCount': '1',
             'InstanceType': 'ml.c4.xlarge'
         }
     ]
@@ -65,13 +65,13 @@ class TestSageMakerEndpointConfigOperator(unittest.TestCase):
     @mock.patch.object(SageMakerHook, '__init__')
     def test_hook_init(self, hook_init, mock_describe, mock_create, mock_client):
         mock_create.return_value = {
-            "EndpointConfigArn": "testarn",
-            "ResponseMetadata": {
-                "HTTPStatusCode": 200
+            'EndpointConfigArn': 'testarn',
+            'ResponseMetadata': {
+                'HTTPStatusCode': 200
             }
         }
         mock_describe.return_value = {
-            "EndpointConfigName": config_name
+            'EndpointConfigName': config_name
         }
         hook_init.return_value = None
         self.sagemaker.execute(None)
@@ -80,13 +80,19 @@ class TestSageMakerEndpointConfigOperator(unittest.TestCase):
             region_name='us-west-2'
         )
 
+    def test_evaluate(self):
+        self.sagemaker.evaluate()
+        for variant in self.sagemaker.config['ProductionVariants']:
+            self.assertEqual(variant['InitialInstanceCount'],
+                             int(variant['InitialInstanceCount']))
+
     @mock.patch.object(SageMakerHook, 'get_conn')
     @mock.patch.object(SageMakerHook, 'create_endpoint_config')
     def test_execute(self, mock_model, mock_client):
         mock_model.return_value = {
-            "EndpointConfigArn": "testarn",
-            "ResponseMetadata": {
-                "HTTPStatusCode": 200
+            'EndpointConfigArn': 'testarn',
+            'ResponseMetadata': {
+                'HTTPStatusCode': 200
             }
         }
         self.sagemaker.execute(None)
@@ -96,9 +102,9 @@ class TestSageMakerEndpointConfigOperator(unittest.TestCase):
     @mock.patch.object(SageMakerHook, 'create_model')
     def test_execute_with_failure(self, mock_model, mock_client):
         mock_model.return_value = {
-            "EndpointConfigArn": "testarn",
-            "ResponseMetadata": {
-                "HTTPStatusCode": 200
+            'EndpointConfigArn': 'testarn',
+            'ResponseMetadata': {
+                'HTTPStatusCode': 200
             }
         }
         self.assertRaises(AirflowException, self.sagemaker.execute, None)

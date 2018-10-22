@@ -60,13 +60,13 @@ class TestSageMakerEndpointOperator(unittest.TestCase):
     @mock.patch.object(SageMakerHook, '__init__')
     def test_hook_init(self, hook_init, mock_describe, mock_create, mock_client):
         mock_create.return_value = {
-            "EndpointArn": "testarn",
-            "ResponseMetadata": {
-                "HTTPStatusCode": 200
+            'EndpointArn': 'testarn',
+            'ResponseMetadata': {
+                'HTTPStatusCode': 200
             }
         }
         mock_describe.return_value = {
-            "EndpointName": endpoint_name
+            'EndpointName': endpoint_name
         }
         hook_init.return_value = None
         self.sagemaker.execute(None)
@@ -79,9 +79,9 @@ class TestSageMakerEndpointOperator(unittest.TestCase):
     @mock.patch.object(SageMakerHook, 'create_endpoint')
     def test_execute(self, mock_model, mock_client):
         mock_model.return_value = {
-            "EndpointArn": "testarn",
-            "ResponseMetadata": {
-                "HTTPStatusCode": 200
+            'EndpointArn': 'testarn',
+            'ResponseMetadata': {
+                'HTTPStatusCode': 200
             }
         }
         self.sagemaker.execute(None)
@@ -95,9 +95,9 @@ class TestSageMakerEndpointOperator(unittest.TestCase):
     @mock.patch.object(SageMakerHook, 'create_model')
     def test_execute_with_failure(self, mock_model, mock_client):
         mock_model.return_value = {
-            "EndpointArn": "testarn",
-            "ResponseMetadata": {
-                "HTTPStatusCode": 200
+            'EndpointArn': 'testarn',
+            'ResponseMetadata': {
+                'HTTPStatusCode': 200
             }
         }
         self.assertRaises(AirflowException, self.sagemaker.execute, None)

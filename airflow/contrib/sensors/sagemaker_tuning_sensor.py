@@ -34,7 +34,7 @@ class SageMakerTuningSensor(SageMakerBaseSensor):
     :type region_name: str
     """
 
-    template_fields = ['job_name']
+    template_fields = ['job_name', 'region_name']
     template_ext = ()
 
     @apply_defaults

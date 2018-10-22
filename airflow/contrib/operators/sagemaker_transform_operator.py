@@ -17,6 +17,8 @@
 # specific language governing permissions and limitations
 # under the License.
 
+import json
+
 from airflow.contrib.hooks.sagemaker_hook import SageMakerHook
 from airflow.models import BaseOperator
 from airflow.utils.decorators import apply_defaults
@@ -65,6 +67,8 @@ class SageMakerTransformOperator(BaseOperator):
                )
        """
 
+    template_fields = ['config', 'region_name']
+    template_ext = ()
     ui_color = '#ededed'
 
     @apply_defaults
@@ -85,6 +89,17 @@ class SageMakerTransformOperator(BaseOperator):
         self.check_interval = check_interval
         self.max_ingestion_time = max_ingestion_time
 
+    def evaluate(self):
+        if 'Transform'in self.config:
+            config = self.config['Transform']
+        else:
+            config = self.config
+        config['TransformResources']['InstanceCount'] = \
+            int(config['TransformResources']['InstanceCount'])
+        config['MaxConcurrentTransforms'] = \
+            int(config['MaxConcurrentTransforms'])
+        config['MaxPayloadInMB'] = int(config['MaxPayloadInMB'])
+
     def execute(self, context):
         sagemaker = SageMakerHook(
             aws_conn_id=self.aws_conn_id,
@@ -92,29 +107,33 @@ class SageMakerTransformOperator(BaseOperator):
         )
 
         self.log.info(
-            "Evaluating the config"
+            'Evaluating the config'
         )
 
-        self.config = sagemaker.evaluate_and_configure_s3(self.config)
+        self.config = sagemaker.configure_s3_resources(self.config)
+        self.evaluate()
 
         self.log.info(
-            "After evaluation the config is:\n {}".format(self.config)
+            'After evaluation the config is:\n {}'.format(
+                json.dumps(self.config, sort_keys=True, indent=4, separators=(',', ': '))
+            )
         )
 
-        model_config = self.config["Model"]\
-            if "Model" in self.config else None
-        transform_config = self.config["Transform"]\
-            if "Transform" in self.config else self.config
-
+        model_config = self.config['Model']\
+            if 'Model' in self.config else None
+        transform_config = self.config['Transform']\
+            if 'Transform' in self.config else self.config
+        transform_config['TransformResources']['InstanceCount'] = \
+            int(transform_config['TransformResources']['InstanceCount'])
         if model_config:
             self.log.info(
-                "Creating SageMaker Model %s for transform job"
+                'Creating SageMaker Model %s for transform job'
                 % model_config['ModelName']
             )
             sagemaker.create_model(model_config)
 
         self.log.info(
-            "Creating SageMaker transform Job %s."
+            'Creating SageMaker transform Job %s.'
             % transform_config['TransformJobName']
         )
         response = sagemaker.create_transform_job(

@@ -18,6 +18,7 @@
 # under the License.
 
 import unittest
+from datetime import datetime
 
 try:
     from unittest import mock
@@ -30,34 +31,32 @@ except ImportError:
 from airflow import configuration
 from airflow.contrib.sensors.sagemaker_training_sensor \
     import SageMakerTrainingSensor
-from airflow.contrib.hooks.sagemaker_hook import SageMakerHook
+from airflow.contrib.hooks.sagemaker_hook import SageMakerHook, LogState
 from airflow.exceptions import AirflowException
 
-DESCRIBE_TRAINING_INPROGRESS_RESPONSE = {
-    'TrainingJobStatus': 'InProgress',
-    'ResponseMetadata': {
-        'HTTPStatusCode': 200,
-    }
-}
 DESCRIBE_TRAINING_COMPELETED_RESPONSE = {
-    'TrainingJobStatus': 'Compeleted',
-    'ResponseMetadata': {
-        'HTTPStatusCode': 200,
-    }
-}
-DESCRIBE_TRAINING_FAILED_RESPONSE = {
-    'TrainingJobStatus': 'Failed',
-    'ResponseMetadata': {
-        'HTTPStatusCode': 200,
+    'TrainingJobStatus': 'Completed',
+    'ResourceConfig': {
+        'InstanceCount': 1,
+        'InstanceType': 'ml.c4.xlarge',
+        'VolumeSizeInGB': 10
     },
-    'FailureReason': 'Unknown'
-}
-DESCRIBE_TRAINING_STOPPING_RESPONSE = {
-    'TrainingJobStatus': 'Stopping',
+    'TrainingStartTime': datetime(2018, 2, 17, 7, 15, 0, 103000),
+    'TrainingEndTime': datetime(2018, 2, 17, 7, 19, 34, 953000),
     'ResponseMetadata': {
         'HTTPStatusCode': 200,
     }
 }
+
+DESCRIBE_TRAINING_INPROGRESS_RESPONSE = dict(DESCRIBE_TRAINING_COMPELETED_RESPONSE)
+DESCRIBE_TRAINING_INPROGRESS_RESPONSE.update({'TrainingJobStatus': 'InProgress'})
+
+DESCRIBE_TRAINING_FAILED_RESPONSE = dict(DESCRIBE_TRAINING_COMPELETED_RESPONSE)
+DESCRIBE_TRAINING_FAILED_RESPONSE.update({'TrainingJobStatus': 'Failed',
+                                        'FailureReason': 'Unknown'})
+
+DESCRIBE_TRAINING_STOPPING_RESPONSE = dict(DESCRIBE_TRAINING_COMPELETED_RESPONSE)
+DESCRIBE_TRAINING_STOPPING_RESPONSE.update({'TrainingJobStatus': 'Stopping'})
 
 
 class TestSageMakerTrainingSensor(unittest.TestCase):
@@ -93,7 +92,8 @@ class TestSageMakerTrainingSensor(unittest.TestCase):
             poke_interval=2,
             aws_conn_id='aws_test',
             job_name='test_job_name',
-            region_name='us-east-1'
+            region_name='us-east-1',
+            print_log=False
         )
 
         sensor.execute(None)
@@ -102,6 +102,38 @@ class TestSageMakerTrainingSensor(unittest.TestCase):
         self.assertEqual(mock_describe_job.call_count, 3)
 
         # make sure the hook was initialized with the specific params
+        hook_init.assert_called_with(aws_conn_id='aws_test',
+                                     region_name='us-east-1')
+
+    @mock.patch.object(SageMakerHook, 'get_conn')
+    @mock.patch.object(SageMakerHook, 'get_log_conn')
+    @mock.patch.object(SageMakerHook, '__init__')
+    @mock.patch.object(SageMakerHook, 'describe_training_job_with_log')
+    @mock.patch.object(SageMakerHook, 'describe_training_job')
+    def test_sensor_with_log(self, mock_describe_job, mock_describe_job_with_log,
+                             hook_init, mock_log_client, mock_client):
+        hook_init.return_value = None
+
+        mock_describe_job.return_value = DESCRIBE_TRAINING_COMPELETED_RESPONSE
+        mock_describe_job_with_log.side_effect = [
+            (LogState.WAIT_IN_PROGRESS, DESCRIBE_TRAINING_INPROGRESS_RESPONSE, 0),
+            (LogState.JOB_COMPLETE, DESCRIBE_TRAINING_STOPPING_RESPONSE, 0),
+            (LogState.COMPLETE, DESCRIBE_TRAINING_COMPELETED_RESPONSE, 0)
+        ]
+        sensor = SageMakerTrainingSensor(
+            task_id='test_task',
+            poke_interval=2,
+            aws_conn_id='aws_test',
+            job_name='test_job_name',
+            region_name='us-east-1',
+            print_log=True
+        )
+
+        sensor.execute(None)
+
+        self.assertEqual(mock_describe_job_with_log.call_count, 3)
+        self.assertEqual(mock_describe_job.call_count, 1)
+
         hook_init.assert_called_with(aws_conn_id='aws_test',
                                      region_name='us-east-1')
 

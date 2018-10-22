@@ -46,6 +46,8 @@ class SageMakerEndpointConfigOperator(BaseOperator):
                )
     """
 
+    template_fields = ['config', 'region_name']
+    template_ext = ()
     ui_color = '#ededed'
 
     @apply_defaults
@@ -60,6 +62,11 @@ class SageMakerEndpointConfigOperator(BaseOperator):
         self.config = config
         self.region_name = region_name
 
+    def evaluate(self):
+        for variant in self.config['ProductionVariants']:
+            variant['InitialInstanceCount'] = \
+                int(variant['InitialInstanceCount'])
+
     def execute(self, context):
         sagemaker = SageMakerHook(
             aws_conn_id=self.aws_conn_id,
@@ -67,17 +74,18 @@ class SageMakerEndpointConfigOperator(BaseOperator):
         )
 
         self.log.info(
-            "Evaluating the config and doing required s3_operations"
+            'Evaluating the config and doing required s3_operations'
         )
 
-        self.config = sagemaker.evaluate_and_configure_s3(self.config)
+        self.config = sagemaker.configure_s3_resources(self.config)
+        self.evaluate()
 
         self.log.info(
-            "After evaluation the config is:\n {}".format(self.config)
+            'After evaluation the config is:\n {}'.format(self.config)
         )
 
         self.log.info(
-            "Creating SageMaker Endpoint Config %s."
+            'Creating SageMaker Endpoint Config %s.'
             % self.config['EndpointConfigName']
         )
         response = sagemaker.create_endpoint_config(self.config)

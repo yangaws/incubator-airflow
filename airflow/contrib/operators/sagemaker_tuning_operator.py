@@ -62,6 +62,8 @@ class SageMakerTuningOperator(BaseOperator):
                )
        """
 
+    template_fields = ['config', 'region_name']
+    template_ext = ()
     ui_color = '#ededed'
 
     @apply_defaults
@@ -83,22 +85,37 @@ class SageMakerTuningOperator(BaseOperator):
         self.check_interval = check_interval
         self.max_ingestion_time = max_ingestion_time
 
+    def evaluate(self):
+        self.config['HyperParameterTuningJobConfig']['ResourceLimits']['MaxNumberOfTrainingJobs'] = \
+            int(self.config['HyperParameterTuningJobConfig']['ResourceLimits']['MaxNumberOfTrainingJobs'])
+        self.config['HyperParameterTuningJobConfig']['ResourceLimits']['MaxParallelTrainingJobs'] = \
+            int(self.config['HyperParameterTuningJobConfig']['ResourceLimits']['MaxParallelTrainingJobs'])
+        self.config['TrainingJobDefinition']['ResourceConfig']['InstanceCount'] = \
+            int(self.config['TrainingJobDefinition']['ResourceConfig']['InstanceCount'])
+        self.config['TrainingJobDefinition']['ResourceConfig']['VolumeSizeInGB'] = \
+            int(self.config['TrainingJobDefinition']['ResourceConfig']['VolumeSizeInGB'])
+        if 'MaxRuntimeInSeconds' in self.config['TrainingJobDefinition']['StoppingCondition']:
+            self.config['TrainingJobDefinition']['StoppingCondition']['MaxRuntimeInSeconds'] = int(
+                self.config['TrainingJobDefinition']['StoppingCondition']['MaxRuntimeInSeconds']
+            )
+
     def execute(self, context):
         sagemaker = SageMakerHook(aws_conn_id=self.aws_conn_id,
                                   region_name=self.region_name)
 
         self.log.info(
-            "Evaluating the config and doing required s3_operations"
+            'Evaluating the config and doing required s3_operations'
         )
 
-        self.config = sagemaker.evaluate_and_configure_s3(self.config)
+        self.config = sagemaker.configure_s3_resources(self.config)
+        self.evaluate()
 
         self.log.info(
-            "After evaluation the config is:\n {}".format(self.config)
+            'After evaluation the config is:\n {}'.format(self.config)
         )
 
         self.log.info(
-            "Creating SageMaker Hyper Parameter Tunning Job %s"
+            'Creating SageMaker Hyper Parameter Tunning Job %s'
             % self.config['HyperParameterTuningJobName']
         )
 
@@ -111,7 +128,7 @@ class SageMakerTuningOperator(BaseOperator):
         if not response['ResponseMetadata']['HTTPStatusCode'] \
            == 200:
             raise AirflowException(
-                "Sagemaker Tuning Job creation failed: %s" % response)
+                'Sagemaker Tuning Job creation failed: %s' % response)
         else:
             return {
                 'Tuning': sagemaker.describe_tuning_job(

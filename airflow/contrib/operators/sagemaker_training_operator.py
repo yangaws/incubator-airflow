@@ -17,6 +17,8 @@
 # specific language governing permissions and limitations
 # under the License.
 
+import json
+
 from airflow.contrib.hooks.sagemaker_hook import SageMakerHook
 from airflow.models import BaseOperator
 from airflow.utils.decorators import apply_defaults
@@ -40,6 +42,8 @@ class SageMakerTrainingOperator(BaseOperator):
        :param wait_for_completion: if the operator should block
        until training job finishes
        :type wait_for_completion: bool
+       :param print_log: if the operator should print the cloudwatch log during training
+       :type print_log: bool
        :param check_interval: if wait is set to be true, this is the time interval
        in seconds which the operator will check the status of the training job
        :type check_interval: int
@@ -63,6 +67,8 @@ class SageMakerTrainingOperator(BaseOperator):
                )
     """
 
+    template_fields = ['config', 'region_name']
+    template_ext = ()
     ui_color = '#ededed'
 
     @apply_defaults
@@ -85,6 +91,14 @@ class SageMakerTrainingOperator(BaseOperator):
         self.check_interval = check_interval
         self.max_ingestion_time = max_ingestion_time
 
+    def evaluate(self):
+        self.config['ResourceConfig']['InstanceCount'] = int(self.config['ResourceConfig']['InstanceCount'])
+        self.config['ResourceConfig']['VolumeSizeInGB'] = int(self.config['ResourceConfig']['VolumeSizeInGB'])
+        if 'MaxRuntimeInSeconds' in self.config['StoppingCondition']:
+            self.config['StoppingCondition']['MaxRuntimeInSeconds'] = int(
+                self.config['StoppingCondition']['MaxRuntimeInSeconds']
+            )
+
     def execute(self, context):
         sagemaker = SageMakerHook(
             aws_conn_id=self.aws_conn_id,
@@ -92,17 +106,19 @@ class SageMakerTrainingOperator(BaseOperator):
         )
 
         self.log.info(
-            "Evaluating the config and doing required s3_operations"
+            'Evaluating the config and doing required s3_operations'
         )
 
-        self.config = sagemaker.evaluate_and_configure_s3(self.config)
+        self.config = sagemaker.configure_s3_resources(self.config)
+        self.evaluate()
 
         self.log.info(
-            "After evaluation the config is:\n {}".format(self.config)
+            'After evaluation the config is:\n {}'.format(
+                json.dumps(self.config, sort_keys=True, indent=4, separators=(',', ': ')))
         )
 
         self.log.info(
-            "Creating SageMaker Training Job %s."
+            'Creating SageMaker Training Job %s.'
             % self.config['TrainingJobName']
         )
 

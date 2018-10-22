@@ -32,15 +32,15 @@ from airflow.contrib.operators.sagemaker_model_operator \
     import SageMakerModelOperator
 from airflow.exceptions import AirflowException
 
-role = "test-role"
+role = 'test-role'
 
-bucket = "test-bucket"
+bucket = 'test-bucket'
 
 model_name = 'test-model-name'
 
-image = "test-image"
+image = 'test-image'
 
-output_url = "s3://{}/test/output".format(bucket)
+output_url = 's3://{}/test/output'.format(bucket)
 create_model_params = {
     'ModelName': model_name,
     'PrimaryContainer': {
@@ -68,13 +68,13 @@ class TestSageMakerModelOperator(unittest.TestCase):
     @mock.patch.object(SageMakerHook, '__init__')
     def test_hook_init(self, hook_init, mock_describe, mock_model, mock_client):
         mock_model.return_value = {
-            "ModelArn": "testarn",
-            "ResponseMetadata": {
-                "HTTPStatusCode": 200
+            'ModelArn': 'testarn',
+            'ResponseMetadata': {
+                'HTTPStatusCode': 200
             }
         }
         mock_describe.return_value = {
-            "ModelName": "test-model"
+            'ModelName': 'test-model'
         }
         hook_init.return_value = None
         self.sagemaker.execute(None)
@@ -86,18 +86,18 @@ class TestSageMakerModelOperator(unittest.TestCase):
     @mock.patch.object(SageMakerHook, 'get_conn')
     @mock.patch.object(SageMakerHook, 'create_model')
     def test_execute(self, mock_model, mock_client):
-        mock_model.return_value = {"ModelArn": "testarn",
-                                   "ResponseMetadata":
-                                       {"HTTPStatusCode": 200}}
+        mock_model.return_value = {'ModelArn': 'testarn',
+                                   'ResponseMetadata':
+                                       {'HTTPStatusCode': 200}}
         self.sagemaker.execute(None)
         mock_model.assert_called_once_with(create_model_params)
 
     @mock.patch.object(SageMakerHook, 'get_conn')
     @mock.patch.object(SageMakerHook, 'create_model')
     def test_execute_with_failure(self, mock_model, mock_client):
-        mock_model.return_value = {"ModelArn": "testarn",
-                                   "ResponseMetadata":
-                                       {"HTTPStatusCode": 404}}
+        mock_model.return_value = {'ModelArn': 'testarn',
+                                   'ResponseMetadata':
+                                       {'HTTPStatusCode': 404}}
         self.assertRaises(AirflowException, self.sagemaker.execute, None)
 
 

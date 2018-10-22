@@ -60,6 +60,8 @@ class SageMakerEndpointOperator(BaseOperator):
                )
     """
 
+    template_fields = ['config', 'region_name']
+    template_ext = ()
     ui_color = '#ededed'
 
     @apply_defaults
@@ -89,13 +91,13 @@ class SageMakerEndpointOperator(BaseOperator):
         )
 
         self.log.info(
-            "Evaluating the config and doing required s3_operations"
+            'Evaluating the config and doing required s3_operations'
         )
 
-        self.config = sagemaker.evaluate_and_configure_s3(self.config)
+        self.config = sagemaker.configure_s3_resources(self.config)
 
         self.log.info(
-            "After evaluation the config is:\n {}".format(self.config)
+            'After evaluation the config is:\n {}'.format(self.config)
         )
 
         if self.operation == 'create':
@@ -107,10 +109,10 @@ class SageMakerEndpointOperator(BaseOperator):
         else:
             raise AirflowException(
                 'Invalid value. '
-                'Argument operation has to be one of "create" and "update')
+                'Argument operation has to be one of "create" and "update"')
 
         self.log.info(
-            "{} SageMaker endpoint {}.".format(log_str, self.config['EndpointName'])
+            '{} SageMaker endpoint {}.'.format(log_str, self.config['EndpointName'])
         )
 
         response = sagemaker_operation(

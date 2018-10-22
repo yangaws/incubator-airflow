@@ -46,6 +46,8 @@ class SageMakerModelOperator(BaseOperator):
                )
     """
 
+    template_fields = ['config', 'region_name']
+    template_ext = ()
     ui_color = '#ededed'
 
     @apply_defaults
@@ -67,17 +69,17 @@ class SageMakerModelOperator(BaseOperator):
         )
 
         self.log.info(
-            "Evaluating the config and doing required s3_operations"
+            'Evaluating the config and doing required s3_operations'
         )
 
-        self.config = sagemaker.evaluate_and_configure_s3(self.config)
+        self.config = sagemaker.configure_s3_resources(self.config)
 
         self.log.info(
-            "After evaluation the config is:\n {}".format(self.config)
+            'After evaluation the config is:\n {}'.format(self.config)
         )
 
         self.log.info(
-            "Creating SageMaker Model %s."
+            'Creating SageMaker Model %s.'
             % self.config['ModelName']
         )
         response = sagemaker.create_model(self.config)
