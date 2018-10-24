@@ -31,18 +31,16 @@ class SageMakerEndpointSensor(SageMakerBaseSensor):
     :type job_name: str
     """
 
-    template_fields = ['endpoint_name', 'region_name']
+    template_fields = ['endpoint_name']
     template_ext = ()
 
     @apply_defaults
     def __init__(self,
                  endpoint_name,
-                 region_name=None,
                  *args,
                  **kwargs):
         super(SageMakerEndpointSensor, self).__init__(*args, **kwargs)
         self.endpoint_name = endpoint_name
-        self.region_name = region_name
 
     def non_terminal_states(self):
         return SageMakerHook.endpoint_non_terminal_states
@@ -51,10 +49,7 @@ class SageMakerEndpointSensor(SageMakerBaseSensor):
         return SageMakerHook.failed_states
 
     def get_sagemaker_response(self):
-        sagemaker = SageMakerHook(
-            aws_conn_id=self.aws_conn_id,
-            region_name=self.region_name
-        )
+        sagemaker = SageMakerHook(aws_conn_id=self.aws_conn_id)
 
         self.log.info('Poking Sagemaker Endpoint %s', self.endpoint_name)
         return sagemaker.describe_endpoint(self.endpoint_name)

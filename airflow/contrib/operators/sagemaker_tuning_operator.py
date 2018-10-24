@@ -17,7 +17,9 @@
 # specific language governing permissions and limitations
 # under the License.
 
-from airflow.contrib.hooks.sagemaker_hook import SageMakerHook
+import json
+
+from airflow.contrib.hooks.sagemaker_hook import SageMakerHook, parse_dict_integers
 from airflow.models import BaseOperator
 from airflow.utils.decorators import apply_defaults
 from airflow.exceptions import AirflowException
@@ -26,50 +28,31 @@ from airflow.exceptions import AirflowException
 class SageMakerTuningOperator(BaseOperator):
 
     """
-       Initiate a SageMaker hyper-parameter tuning job
+    Initiate a SageMaker hyper-parameter tuning job
+    This operator returns The ARN of the tuning job created in Amazon SageMaker
 
-       This operator returns The ARN of the tuning job created in Amazon SageMaker
+    :param config: The configuration necessary to start a tuning job (templated)
+    :type config: dict
+    :param aws_conn_id: The AWS connection ID to use.
+    :type aws_conn_id: str
+    :param wait_for_completion: if the operator should block until tuning job finishes
+    :type wait_for_completion: bool
+    :param check_interval: if wait is set to be true, this is the time interval
+        in seconds which the operator will check the status of the tuning job
+    :type check_interval: int
+    :param max_ingestion_time: if wait is set to be true, the operator will fail
+        if the tuning job hasn't finish within the max_ingestion_time in seconds
+        (Caution: be careful to set this parameters because tuning can take very long)
+    :type max_ingestion_time: int
+    """
 
-       :param config:
-       The configuration necessary to start a tuning job (templated)
-       :type config: dict
-       :param region_name: The AWS region_name
-       :type region_name: str
-       :param aws_conn_id: The AWS connection ID to use.
-       :type aws_conn_id: str
-       :param wait_for_completion: if the operator should block
-       until tuning job finishes
-       :type wait_for_completion: bool
-       :param check_interval: if wait is set to be true, this is the time interval
-       in seconds which the operator will check the status of the tuning job
-       :type check_interval: int
-       :param max_ingestion_time: if wait is set to be true, the operator will fail
-       if the tuning job hasn't finish within the max_ingestion_time in seconds
-       (Caution: be careful to set this parameters because tuning can take very long)
-       :type max_ingestion_time: int
-
-       **Example**:
-           The following operator would start a tuning job when executed
-
-            sagemaker_tuning =
-               SageMakerTuningOperator(
-                   task_id='sagemaker_tuning',
-                   config=config,
-                   region='us-west-2',
-                   check_interval=20,
-                   max_ingestion_time=3600,
-                   aws_conn_id='aws_customers_conn',
-               )
-       """
-
-    template_fields = ['config', 'region_name']
+    template_fields = ['config']
     template_ext = ()
     ui_color = '#ededed'
 
     @apply_defaults
     def __init__(self,
                  config,
-                 region_name=None,
                  aws_conn_id='sagemaker_default',
                  wait_for_completion=True,
                  check_interval=30,
@@ -79,41 +62,39 @@ class SageMakerTuningOperator(BaseOperator):
             .__init__(*args, **kwargs)
 
         self.aws_conn_id = aws_conn_id
-        self.region_name = region_name
         self.config = config
         self.wait_for_completion = wait_for_completion
         self.check_interval = check_interval
         self.max_ingestion_time = max_ingestion_time
 
-    def evaluate(self):
-        self.config['HyperParameterTuningJobConfig']['ResourceLimits']['MaxNumberOfTrainingJobs'] = \
-            int(self.config['HyperParameterTuningJobConfig']['ResourceLimits']['MaxNumberOfTrainingJobs'])
-        self.config['HyperParameterTuningJobConfig']['ResourceLimits']['MaxParallelTrainingJobs'] = \
-            int(self.config['HyperParameterTuningJobConfig']['ResourceLimits']['MaxParallelTrainingJobs'])
-        self.config['TrainingJobDefinition']['ResourceConfig']['InstanceCount'] = \
-            int(self.config['TrainingJobDefinition']['ResourceConfig']['InstanceCount'])
-        self.config['TrainingJobDefinition']['ResourceConfig']['VolumeSizeInGB'] = \
-            int(self.config['TrainingJobDefinition']['ResourceConfig']['VolumeSizeInGB'])
-        if 'MaxRuntimeInSeconds' in self.config['TrainingJobDefinition']['StoppingCondition']:
-            self.config['TrainingJobDefinition']['StoppingCondition']['MaxRuntimeInSeconds'] = int(
-                self.config['TrainingJobDefinition']['StoppingCondition']['MaxRuntimeInSeconds']
-            )
+    def parse_config_integers(self):
+        # Parse the integer fields of tuning config to integers
+        parse_dict_integers(self.config, ['HyperParameterTuningJobConfig', 'ResourceLimits',
+                                          'MaxNumberOfTrainingJobs'])
+        parse_dict_integers(self.config, ['HyperParameterTuningJobConfig', 'ResourceLimits',
+                                          'MaxParallelTrainingJobs'])
+        parse_dict_integers(self.config, ['TrainingJobDefinition', 'ResourceConfig',
+                                          'InstanceCount'])
+        parse_dict_integers(self.config, ['TrainingJobDefinition', 'ResourceConfig',
+                                          'VolumeSizeInGB'])
+        parse_dict_integers(self.config, ['TrainingJobDefinition', 'StoppingCondition',
+                                          'MaxRuntimeInSeconds'], False)
 
     def execute(self, context):
-        sagemaker = SageMakerHook(aws_conn_id=self.aws_conn_id,
-                                  region_name=self.region_name)
-
+        sagemaker = SageMakerHook(aws_conn_id=self.aws_conn_id)
         self.log.info(
             'Evaluating the config and doing required s3_operations'
         )
 
         self.config = sagemaker.configure_s3_resources(self.config)
-        self.evaluate()
+        self.parse_config_integers()
         self.config['TrainingJobDefinition']['RoleArn'] = \
             sagemaker.expand_role(self.config['TrainingJobDefinition']['RoleArn'])
 
         self.log.info(
-            'After evaluation the config is:\n {}'.format(self.config)
+            'After evaluation the config is:\n {}'.format(
+                json.dumps(self.config, sort_keys=True, indent=4, separators=(',', ': '))
+            )
         )
 
         self.log.info(
@@ -127,8 +108,7 @@ class SageMakerTuningOperator(BaseOperator):
             check_interval=self.check_interval,
             max_ingestion_time=self.max_ingestion_time
         )
-        if not response['ResponseMetadata']['HTTPStatusCode'] \
-           == 200:
+        if response['ResponseMetadata']['HTTPStatusCode'] != 200:
             raise AirflowException(
                 'Sagemaker Tuning Job creation failed: %s' % response)
         else:

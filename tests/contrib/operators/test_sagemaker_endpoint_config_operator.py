@@ -55,8 +55,7 @@ class TestSageMakerEndpointConfigOperator(unittest.TestCase):
         self.sagemaker = SageMakerEndpointConfigOperator(
             task_id='test_sagemaker_operator',
             aws_conn_id='sagemaker_test_id',
-            config=create_endpoint_config_params,
-            region_name='us-west-2'
+            config=create_endpoint_config_params
         )
 
     @mock.patch.object(SageMakerHook, 'get_conn')
@@ -75,13 +74,10 @@ class TestSageMakerEndpointConfigOperator(unittest.TestCase):
         }
         hook_init.return_value = None
         self.sagemaker.execute(None)
-        hook_init.assert_called_once_with(
-            aws_conn_id='sagemaker_test_id',
-            region_name='us-west-2'
-        )
+        hook_init.assert_called_once_with(aws_conn_id='sagemaker_test_id')
 
-    def test_evaluate(self):
-        self.sagemaker.evaluate()
+    def test_parse_config_integers(self):
+        self.sagemaker.parse_config_integers()
         for variant in self.sagemaker.config['ProductionVariants']:
             self.assertEqual(variant['InitialInstanceCount'],
                              int(variant['InitialInstanceCount']))

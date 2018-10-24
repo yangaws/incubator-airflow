@@ -93,7 +93,6 @@ class TestSageMakerTransformOperator(unittest.TestCase):
             task_id='test_sagemaker_operator',
             aws_conn_id='sagemaker_test_id',
             config=config,
-            region_name='us-west-2',
             wait_for_completion=False,
             check_interval=5
         )
@@ -120,13 +119,10 @@ class TestSageMakerTransformOperator(unittest.TestCase):
         }
         hook_init.return_value = None
         self.sagemaker.execute(None)
-        hook_init.assert_called_once_with(
-            aws_conn_id='sagemaker_test_id',
-            region_name='us-west-2'
-        )
+        hook_init.assert_called_once_with(aws_conn_id='sagemaker_test_id')
 
-    def test_evaluate(self):
-        self.sagemaker.evaluate()
+    def test_parse_config_integers(self):
+        self.sagemaker.parse_config_integers()
         test_config = self.sagemaker.config['Transform']
         self.assertEqual(test_config['TransformResources']['InstanceCount'],
                          int(test_config['TransformResources']['InstanceCount']))

@@ -30,22 +30,18 @@ class SageMakerTuningSensor(SageMakerBaseSensor):
 
     :param job_name: job_name of the tuning instance to check the state of
     :type job_name: str
-    :param region_name: The AWS region_name
-    :type region_name: str
     """
 
-    template_fields = ['job_name', 'region_name']
+    template_fields = ['job_name']
     template_ext = ()
 
     @apply_defaults
     def __init__(self,
                  job_name,
-                 region_name=None,
                  *args,
                  **kwargs):
         super(SageMakerTuningSensor, self).__init__(*args, **kwargs)
         self.job_name = job_name
-        self.region_name = region_name
 
     def non_terminal_states(self):
         return SageMakerHook.non_terminal_states
@@ -54,10 +50,7 @@ class SageMakerTuningSensor(SageMakerBaseSensor):
         return SageMakerHook.failed_states
 
     def get_sagemaker_response(self):
-        sagemaker = SageMakerHook(
-            aws_conn_id=self.aws_conn_id,
-            region_name=self.region_name
-        )
+        sagemaker = SageMakerHook(aws_conn_id=self.aws_conn_id)
 
         self.log.info('Poking Sagemaker Tuning Job %s', self.job_name)
         return sagemaker.describe_tuning_job(self.job_name)

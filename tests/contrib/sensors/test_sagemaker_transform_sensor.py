@@ -92,8 +92,7 @@ class TestSageMakerTransformSensor(unittest.TestCase):
             task_id='test_task',
             poke_interval=2,
             aws_conn_id='aws_test',
-            job_name='test_job_name',
-            region_name='us-east-1'
+            job_name='test_job_name'
         )
 
         sensor.execute(None)
@@ -102,8 +101,7 @@ class TestSageMakerTransformSensor(unittest.TestCase):
         self.assertEqual(mock_describe_job.call_count, 3)
 
         # make sure the hook was initialized with the specific params
-        hook_init.assert_called_with(aws_conn_id='aws_test',
-                                     region_name='us-east-1')
+        hook_init.assert_called_with(aws_conn_id='aws_test')
 
 
 if __name__ == '__main__':

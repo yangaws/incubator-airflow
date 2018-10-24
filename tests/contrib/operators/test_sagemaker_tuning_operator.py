@@ -119,7 +119,6 @@ class TestSageMakerTuningOperator(unittest.TestCase):
             task_id='test_sagemaker_operator',
             aws_conn_id='sagemaker_test_conn',
             config=create_tuning_params,
-            region_name='us-east-1',
             wait_for_completion=False,
             check_interval=5
         )
@@ -144,13 +143,10 @@ class TestSageMakerTuningOperator(unittest.TestCase):
         }
         hook_init.return_value = None
         self.sagemaker.execute(None)
-        hook_init.assert_called_once_with(
-            aws_conn_id='sagemaker_test_conn',
-            region_name='us-east-1'
-        )
+        hook_init.assert_called_once_with(aws_conn_id='sagemaker_test_conn')
 
-    def test_evaluate(self):
-        self.sagemaker.evaluate()
+    def test_parse_config_integers(self):
+        self.sagemaker.parse_config_integers()
         self.assertEqual(self.sagemaker.config['TrainingJobDefinition']['ResourceConfig']['InstanceCount'],
                          int(self.sagemaker.config['TrainingJobDefinition']['ResourceConfig']['InstanceCount']))
         self.assertEqual(self.sagemaker.config['TrainingJobDefinition']['ResourceConfig']['VolumeSizeInGB'],

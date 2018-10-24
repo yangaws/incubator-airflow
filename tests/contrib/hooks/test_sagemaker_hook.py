@@ -284,7 +284,7 @@ class TestSageMakerHook(unittest.TestCase):
         }
         self.assertEqual(evaluation_result,
                          hook.configure_s3_resources(test_evaluation_config))
-        mock_create_bucket.assert_called_once_with(bucket_name=bucket, region_name=None)
+        mock_create_bucket.assert_called_once_with(bucket_name=bucket)
         mock_load_file.assert_called_once_with(path, key, bucket)
 
     @mock.patch.object(SageMakerHook, 'get_conn')
@@ -326,9 +326,7 @@ class TestSageMakerHook(unittest.TestCase):
 
     @mock.patch.object(SageMakerHook, 'get_client_type')
     def test_conn(self, mock_get_client):
-        hook = SageMakerHook(aws_conn_id='sagemaker_test_conn_id',
-                             region_name='us-east-1'
-                             )
+        hook = SageMakerHook(aws_conn_id='sagemaker_test_conn_id')
         self.assertEqual(hook.aws_conn_id, 'sagemaker_test_conn_id')
         self.assertEqual(mock_get_client.call_count, 3)
 

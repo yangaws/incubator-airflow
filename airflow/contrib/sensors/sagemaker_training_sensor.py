@@ -31,30 +31,23 @@ class SageMakerTrainingSensor(SageMakerBaseSensor):
 
     :param job_name: name of the SageMaker training job to check the state of
     :type job_name: str
-    :param region_name: The AWS region_name
-    :type region_name: str
     :param print_log: if the operator should print the cloudwatch log
     :type print_log: bool
     """
 
-    template_fields = ['job_name', 'region_name']
+    template_fields = ['job_name']
     template_ext = ()
 
     @apply_defaults
     def __init__(self,
                  job_name,
-                 region_name=None,
                  print_log=True,
                  *args,
                  **kwargs):
         super(SageMakerTrainingSensor, self).__init__(*args, **kwargs)
         self.job_name = job_name
-        self.region_name = region_name
         self.print_log = print_log
-        self.hook = SageMakerHook(
-            aws_conn_id=self.aws_conn_id,
-            region_name=self.region_name
-        )
+        self.hook = SageMakerHook(aws_conn_id=self.aws_conn_id)
         self.positions = {}
         self.stream_names = []
         self.instance_count = None

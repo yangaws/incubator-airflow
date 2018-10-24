@@ -58,8 +58,7 @@ class TestSageMakerModelOperator(unittest.TestCase):
         self.sagemaker = SageMakerModelOperator(
             task_id='test_sagemaker_operator',
             aws_conn_id='sagemaker_test_id',
-            config=create_model_params,
-            region_name='us-west-2'
+            config=create_model_params
         )
 
     @mock.patch.object(SageMakerHook, 'get_conn')
@@ -78,10 +77,7 @@ class TestSageMakerModelOperator(unittest.TestCase):
         }
         hook_init.return_value = None
         self.sagemaker.execute(None)
-        hook_init.assert_called_once_with(
-            aws_conn_id='sagemaker_test_id',
-            region_name='us-west-2'
-        )
+        hook_init.assert_called_once_with(aws_conn_id='sagemaker_test_id')
 
     @mock.patch.object(SageMakerHook, 'get_conn')
     @mock.patch.object(SageMakerHook, 'create_model')
