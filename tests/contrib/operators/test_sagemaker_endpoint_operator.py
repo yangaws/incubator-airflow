@@ -86,39 +86,6 @@ class TestSageMakerEndpointOperator(unittest.TestCase):
             operation='create'
         )
 
-    @mock.patch.object(SageMakerHook, 'get_conn')
-    @mock.patch.object(SageMakerHook, 'create_model')
-    @mock.patch.object(SageMakerHook, 'describe_model')
-    @mock.patch.object(SageMakerHook, 'create_endpoint_config')
-    @mock.patch.object(SageMakerHook, 'describe_endpoint_config')
-    @mock.patch.object(SageMakerHook, 'create_endpoint')
-    @mock.patch.object(SageMakerHook, 'describe_endpoint')
-    @mock.patch.object(SageMakerHook, '__init__')
-    def test_hook_init(self, hook_init, mock_describe_endpoint, mock_endpoint,
-                       mock_describe_endpoint_config, mock_endpoint_config,
-                       mock_describe_model, mock_model, mock_client):
-        mock_model.return_value = {'ModelArn': 'testarn',
-                                   'ResponseMetadata':
-                                   {'HTTPStatusCode': 200}}
-        mock_endpoint_config.return_value = {'EndpointConfigArn': 'testarn',
-                                             'ResponseMetadata':
-                                             {'HTTPStatusCode': 200}}
-        mock_endpoint.return_value = {'EndpointArn': 'testarn',
-                                      'ResponseMetadata':
-                                      {'HTTPStatusCode': 200}}
-        mock_describe_model.return_value = {
-            'ModelName': model_name
-        }
-        mock_describe_endpoint_config.return_value = {
-            'EndpointConfigName': config_name
-        }
-        mock_describe_endpoint.return_value = {
-            'EndpointName': endpoint_name
-        }
-        hook_init.return_value = None
-        self.sagemaker.execute(None)
-        hook_init.assert_called_once_with(aws_conn_id='sagemaker_test_id')
-
     def test_parse_config_integers(self):
         self.sagemaker.parse_config_integers()
         for variant in self.sagemaker.config['EndpointConfig']['ProductionVariants']:

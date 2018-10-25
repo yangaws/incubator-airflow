@@ -17,15 +17,12 @@
 # specific language governing permissions and limitations
 # under the License.
 
-import json
-
-from airflow.contrib.hooks.sagemaker_hook import SageMakerHook, parse_dict_integers
-from airflow.models import BaseOperator
+from airflow.contrib.operators.sagemaker_base_operator import SageMakerBaseOperator
 from airflow.utils.decorators import apply_defaults
 from airflow.exceptions import AirflowException
 
 
-class SageMakerEndpointOperator(BaseOperator):
+class SageMakerEndpointOperator(SageMakerBaseOperator):
 
     """
     Create a SageMaker endpoint
@@ -52,10 +49,6 @@ class SageMakerEndpointOperator(BaseOperator):
     :type operation: str
     """
 
-    template_fields = ['config']
-    template_ext = ()
-    ui_color = '#ededed'
-
     @apply_defaults
     def __init__(self,
                  config,
@@ -65,7 +58,9 @@ class SageMakerEndpointOperator(BaseOperator):
                  max_ingestion_time=None,
                  operation='create',
                  *args, **kwargs):
-        super(SageMakerEndpointOperator, self).__init__(*args, **kwargs)
+        super(SageMakerEndpointOperator, self).__init__(config=config,
+                                                        aws_conn_id=aws_conn_id,
+                                                        *args, **kwargs)
 
         self.aws_conn_id = aws_conn_id
         self.config = config
@@ -73,28 +68,24 @@ class SageMakerEndpointOperator(BaseOperator):
         self.check_interval = check_interval
         self.max_ingestion_time = max_ingestion_time
         self.operation = operation.lower()
+        self.create_integer_fields()
 
-    def parse_config_integers(self):
-        # Parse the integer fields of endpoint config to integers
+    def create_integer_fields(self):
         if 'EndpointConfig' in self.config:
-            for variant in self.config['EndpointConfig']['ProductionVariants']:
-                parse_dict_integers(variant, ['InitialInstanceCount'])
+            self.integer_fields = [
+                ['EndpointConfig', 'ProductionVariants', 'InitialInstanceCount']
+            ]
+
+    def expand_role(self):
+        if 'Model' not in self.config:
+            return
+        config = self.config['Model']
+        if 'ExecutionRoleArn' in config:
+            config['ExecutionRoleArn'] = \
+                self.hook.expand_role(config['ExecutionRoleArn'])
 
     def execute(self, context):
-        sagemaker = SageMakerHook(aws_conn_id=self.aws_conn_id)
-
-        self.log.info(
-            'Evaluating the config and doing required s3_operations'
-        )
-
-        self.config = sagemaker.configure_s3_resources(self.config)
-        self.parse_config_integers()
-
-        self.log.info(
-            'After evaluation the config is:\n {}'.format(
-                json.dumps(self.config, sort_keys=True, indent=4, separators=(',', ': '))
-            )
-        )
+        self.preprocess_config()
 
         model_info = self.config['Model']\
             if 'Model' in self.config else None
@@ -108,24 +99,24 @@ class SageMakerEndpointOperator(BaseOperator):
                 'Creating SageMaker model %s.'
                 % model_info['ModelName']
             )
-            sagemaker.create_model(model_info)
+            self.hook.create_model(model_info)
 
         if endpoint_config_info:
             self.log.info(
                 'Creating endpoint config %s.'
                 % endpoint_config_info['EndpointConfigName']
             )
-            sagemaker.create_endpoint_config(endpoint_config_info)
+            self.hook.create_endpoint_config(endpoint_config_info)
 
         if self.operation == 'create':
-            sagemaker_operation = sagemaker.create_endpoint
+            sagemaker_operation = self.hook.create_endpoint
             log_str = 'Creating'
         elif self.operation == 'update':
-            sagemaker_operation = sagemaker.update_endpoint
+            sagemaker_operation = self.hook.update_endpoint
             log_str = 'Updating'
         else:
             raise AirflowException(
-                'Invalid value. '
+                'Invalid value! '
                 'Argument operation has to be one of "create" and "update"')
 
         self.log.info(
@@ -143,10 +134,10 @@ class SageMakerEndpointOperator(BaseOperator):
                 'Sagemaker endpoint creation failed: %s' % response)
         else:
             return {
-                'EndpointConfig': sagemaker.describe_endpoint_config(
+                'EndpointConfig': self.hook.describe_endpoint_config(
                     endpoint_info['EndpointConfigName']
                 ),
-                'Endpoint': sagemaker.describe_endpoint(
+                'Endpoint': self.hook.describe_endpoint(
                     endpoint_info['EndpointName']
                 )
             }

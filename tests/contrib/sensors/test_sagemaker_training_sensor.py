@@ -53,7 +53,7 @@ DESCRIBE_TRAINING_INPROGRESS_RESPONSE.update({'TrainingJobStatus': 'InProgress'}
 
 DESCRIBE_TRAINING_FAILED_RESPONSE = dict(DESCRIBE_TRAINING_COMPELETED_RESPONSE)
 DESCRIBE_TRAINING_FAILED_RESPONSE.update({'TrainingJobStatus': 'Failed',
-                                        'FailureReason': 'Unknown'})
+                                          'FailureReason': 'Unknown'})
 
 DESCRIBE_TRAINING_STOPPING_RESPONSE = dict(DESCRIBE_TRAINING_COMPELETED_RESPONSE)
 DESCRIBE_TRAINING_STOPPING_RESPONSE.update({'TrainingJobStatus': 'Stopping'})

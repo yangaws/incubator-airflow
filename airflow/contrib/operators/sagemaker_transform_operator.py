@@ -17,15 +17,12 @@
 # specific language governing permissions and limitations
 # under the License.
 
-import json
-
-from airflow.contrib.hooks.sagemaker_hook import SageMakerHook, parse_dict_integers
-from airflow.models import BaseOperator
+from airflow.contrib.operators.sagemaker_base_operator import SageMakerBaseOperator
 from airflow.utils.decorators import apply_defaults
 from airflow.exceptions import AirflowException
 
 
-class SageMakerTransformOperator(BaseOperator):
+class SageMakerTransformOperator(SageMakerBaseOperator):
     """
     Initiate a SageMaker transform
     This operator returns The ARN of the model created in Amazon SageMaker
@@ -51,10 +48,6 @@ class SageMakerTransformOperator(BaseOperator):
     :type max_ingestion_time: int
     """
 
-    template_fields = ['config']
-    template_ext = ()
-    ui_color = '#ededed'
-
     @apply_defaults
     def __init__(self,
                  config,
@@ -63,39 +56,37 @@ class SageMakerTransformOperator(BaseOperator):
                  check_interval=30,
                  max_ingestion_time=None,
                  *args, **kwargs):
-        super(SageMakerTransformOperator, self).__init__(*args, **kwargs)
+        super(SageMakerTransformOperator, self).__init__(config=config,
+                                                         aws_conn_id=aws_conn_id,
+                                                         *args, **kwargs)
 
         self.aws_conn_id = aws_conn_id
         self.config = config
         self.wait_for_completion = wait_for_completion
         self.check_interval = check_interval
         self.max_ingestion_time = max_ingestion_time
+        self.create_integer_fields()
 
-    def parse_config_integers(self):
-        # Parse the integer fields of transform config to integers
-        if 'Transform'in self.config:
-            config = self.config['Transform']
-        else:
-            config = self.config
-        parse_dict_integers(config, ['TransformResources', 'InstanceCount'])
-        parse_dict_integers(config, ['MaxConcurrentTransforms'])
-        parse_dict_integers(config, ['MaxPayloadInMB'])
+    def create_integer_fields(self):
+        self.integer_fields = [
+            ['Transform', 'TransformResources', 'InstanceCount'],
+            ['Transform', 'MaxConcurrentTransforms'],
+            ['Transform', 'MaxPayloadInMB']
+        ]
+        if 'Transform' not in self.config:
+            for field in self.integer_fields:
+                field.pop(0)
+
+    def expand_role(self):
+        if 'Model' not in self.config:
+            return
+        config = self.config['Model']
+        if 'ExecutionRoleArn' in config:
+            config['ExecutionRoleArn'] = \
+                self.hook.expand_role(config['ExecutionRoleArn'])
 
     def execute(self, context):
-        sagemaker = SageMakerHook(aws_conn_id=self.aws_conn_id)
-
-        self.log.info(
-            'Evaluating the config and doing required s3_operation'
-        )
-
-        self.config = sagemaker.configure_s3_resources(self.config)
-        self.parse_config_integers()
-
-        self.log.info(
-            'After evaluation the config is:\n {}'.format(
-                json.dumps(self.config, sort_keys=True, indent=4, separators=(',', ': '))
-            )
-        )
+        self.preprocess_config()
 
         model_config = self.config['Model']\
             if 'Model' in self.config else None
@@ -107,13 +98,13 @@ class SageMakerTransformOperator(BaseOperator):
                 'Creating SageMaker Model %s for transform job'
                 % model_config['ModelName']
             )
-            sagemaker.create_model(model_config)
+            self.hook.create_model(model_config)
 
         self.log.info(
             'Creating SageMaker transform Job %s.'
             % transform_config['TransformJobName']
         )
-        response = sagemaker.create_transform_job(
+        response = self.hook.create_transform_job(
             transform_config,
             wait_for_completion=self.wait_for_completion,
             check_interval=self.check_interval,
@@ -123,10 +114,10 @@ class SageMakerTransformOperator(BaseOperator):
                 'Sagemaker transform Job creation failed: %s' % response)
         else:
             return {
-                'Model': sagemaker.describe_model(
+                'Model': self.hook.describe_model(
                     transform_config['ModelName']
                 ),
-                'Transform': sagemaker.describe_transform_job(
+                'Transform': self.hook.describe_transform_job(
                     transform_config['TransformJobName']
                 )
             }

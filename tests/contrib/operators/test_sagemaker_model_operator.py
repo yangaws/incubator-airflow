@@ -63,24 +63,6 @@ class TestSageMakerModelOperator(unittest.TestCase):
 
     @mock.patch.object(SageMakerHook, 'get_conn')
     @mock.patch.object(SageMakerHook, 'create_model')
-    @mock.patch.object(SageMakerHook, 'describe_model')
-    @mock.patch.object(SageMakerHook, '__init__')
-    def test_hook_init(self, hook_init, mock_describe, mock_model, mock_client):
-        mock_model.return_value = {
-            'ModelArn': 'testarn',
-            'ResponseMetadata': {
-                'HTTPStatusCode': 200
-            }
-        }
-        mock_describe.return_value = {
-            'ModelName': 'test-model'
-        }
-        hook_init.return_value = None
-        self.sagemaker.execute(None)
-        hook_init.assert_called_once_with(aws_conn_id='sagemaker_test_id')
-
-    @mock.patch.object(SageMakerHook, 'get_conn')
-    @mock.patch.object(SageMakerHook, 'create_model')
     def test_execute(self, mock_model, mock_client):
         mock_model.return_value = {'ModelArn': 'testarn',
                                    'ResponseMetadata':

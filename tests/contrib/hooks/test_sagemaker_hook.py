@@ -292,10 +292,10 @@ class TestSageMakerHook(unittest.TestCase):
     @mock.patch.object(S3Hook, 'check_for_bucket')
     @mock.patch.object(S3Hook, 'check_for_prefix')
     def test_check_s3_url(self,
-                           mock_check_prefix,
-                           mock_check_bucket,
-                           mock_check_key,
-                           mock_client):
+                          mock_check_prefix,
+                          mock_check_bucket,
+                          mock_check_key,
+                          mock_client):
         mock_client.return_value = None
         hook = SageMakerHook()
         mock_check_bucket.side_effect = [False, True, True, True]
@@ -328,7 +328,6 @@ class TestSageMakerHook(unittest.TestCase):
     def test_conn(self, mock_get_client):
         hook = SageMakerHook(aws_conn_id='sagemaker_test_conn_id')
         self.assertEqual(hook.aws_conn_id, 'sagemaker_test_conn_id')
-        self.assertEqual(mock_get_client.call_count, 3)
 
     @mock.patch.object(SageMakerHook, 'check_training_config')
     @mock.patch.object(SageMakerHook, 'get_conn')
@@ -550,11 +549,13 @@ class TestSageMakerHook(unittest.TestCase):
         self.assertEqual(response, 'InProgress')
 
     def test_secondary_training_status_changed_true(self):
-        changed = secondary_training_status_changed(SECONDARY_STATUS_DESCRIPTION_1, SECONDARY_STATUS_DESCRIPTION_2)
+        changed = secondary_training_status_changed(SECONDARY_STATUS_DESCRIPTION_1,
+                                                    SECONDARY_STATUS_DESCRIPTION_2)
         self.assertTrue(changed)
 
     def test_secondary_training_status_changed_false(self):
-        changed = secondary_training_status_changed(SECONDARY_STATUS_DESCRIPTION_1, SECONDARY_STATUS_DESCRIPTION_1)
+        changed = secondary_training_status_changed(SECONDARY_STATUS_DESCRIPTION_1,
+                                                    SECONDARY_STATUS_DESCRIPTION_1)
         self.assertFalse(changed)
 
     def test_secondary_training_status_message_status_changed(self):

@@ -123,34 +123,16 @@ class TestSageMakerTuningOperator(unittest.TestCase):
             check_interval=5
         )
 
-    @mock.patch.object(SageMakerHook, 'get_conn')
-    @mock.patch.object(SageMakerHook, 'create_tuning_job')
-    @mock.patch.object(SageMakerHook, 'describe_tuning_job')
-    @mock.patch.object(SageMakerHook, '__init__')
-    def test_hook_init(self, hook_init, mock_describe, mock_tuning, mock_client):
-        mock_tuning.return_value = {
-            'TrainingJobArn': 'testarn',
-            'ResponseMetadata': {
-                'HTTPStatusCode': 200
-            }
-        }
-
-        mock_describe.return_value = {
-            'HyperParameterTuningJobStatus': 'Compeleted',
-            'ResponseMetadata': {
-                'HTTPStatusCode': 200,
-            }
-        }
-        hook_init.return_value = None
-        self.sagemaker.execute(None)
-        hook_init.assert_called_once_with(aws_conn_id='sagemaker_test_conn')
-
     def test_parse_config_integers(self):
         self.sagemaker.parse_config_integers()
-        self.assertEqual(self.sagemaker.config['TrainingJobDefinition']['ResourceConfig']['InstanceCount'],
-                         int(self.sagemaker.config['TrainingJobDefinition']['ResourceConfig']['InstanceCount']))
-        self.assertEqual(self.sagemaker.config['TrainingJobDefinition']['ResourceConfig']['VolumeSizeInGB'],
-                         int(self.sagemaker.config['TrainingJobDefinition']['ResourceConfig']['VolumeSizeInGB']))
+        self.assertEqual(self.sagemaker.config['TrainingJobDefinition']['ResourceConfig']
+                         ['InstanceCount'],
+                         int(self.sagemaker.config['TrainingJobDefinition']['ResourceConfig']
+                             ['InstanceCount']))
+        self.assertEqual(self.sagemaker.config['TrainingJobDefinition']['ResourceConfig']
+                         ['VolumeSizeInGB'],
+                         int(self.sagemaker.config['TrainingJobDefinition']['ResourceConfig']
+                             ['VolumeSizeInGB']))
         self.assertEqual(self.sagemaker.config['HyperParameterTuningJobConfig']['ResourceLimits']
                          ['MaxNumberOfTrainingJobs'],
                          int(self.sagemaker.config['HyperParameterTuningJobConfig']['ResourceLimits']

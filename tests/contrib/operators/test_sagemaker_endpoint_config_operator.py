@@ -58,24 +58,6 @@ class TestSageMakerEndpointConfigOperator(unittest.TestCase):
             config=create_endpoint_config_params
         )
 
-    @mock.patch.object(SageMakerHook, 'get_conn')
-    @mock.patch.object(SageMakerHook, 'create_endpoint_config')
-    @mock.patch.object(SageMakerHook, 'describe_endpoint_config')
-    @mock.patch.object(SageMakerHook, '__init__')
-    def test_hook_init(self, hook_init, mock_describe, mock_create, mock_client):
-        mock_create.return_value = {
-            'EndpointConfigArn': 'testarn',
-            'ResponseMetadata': {
-                'HTTPStatusCode': 200
-            }
-        }
-        mock_describe.return_value = {
-            'EndpointConfigName': config_name
-        }
-        hook_init.return_value = None
-        self.sagemaker.execute(None)
-        hook_init.assert_called_once_with(aws_conn_id='sagemaker_test_id')
-
     def test_parse_config_integers(self):
         self.sagemaker.parse_config_integers()
         for variant in self.sagemaker.config['ProductionVariants']:

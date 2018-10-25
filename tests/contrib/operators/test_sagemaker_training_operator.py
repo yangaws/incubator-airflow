@@ -55,9 +55,9 @@ create_training_params = \
             'S3OutputPath': output_url
         },
         'ResourceConfig': {
-            'InstanceCount': 2,
+            'InstanceCount': '2',
             'InstanceType': 'ml.c4.8xlarge',
-            'VolumeSizeInGB': 50
+            'VolumeSizeInGB': '50'
         },
         'TrainingJobName': job_name,
         'HyperParameters': {
@@ -65,10 +65,6 @@ create_training_params = \
             'feature_dim': '784',
             'mini_batch_size': '500',
             'force_dense': 'True'
-        },
-        'ResourceConfig': {
-            'InstanceCount': '2',
-            'VolumeSizeInGB': '30'
         },
         'StoppingCondition': {
             'MaxRuntimeInSeconds': '3600'
@@ -101,25 +97,6 @@ class TestSageMakerTrainingOperator(unittest.TestCase):
             wait_for_completion=False,
             check_interval=5
         )
-
-    @mock.patch.object(SageMakerHook, 'get_conn')
-    @mock.patch.object(SageMakerHook, 'create_training_job')
-    @mock.patch.object(SageMakerHook, 'describe_training_job')
-    @mock.patch.object(SageMakerHook, '__init__')
-    def test_hook_init(self, hook_init, mock_describe, mock_training, mock_client):
-        mock_training.return_value = {
-            'TrainingJobArn': 'testarn',
-            'ResponseMetadata': {
-                'HTTPStatusCode': 200
-            }
-        }
-        mock_describe.return_value = {
-            'ModelName': 'model-name'
-        }
-
-        hook_init.return_value = None
-        self.sagemaker.execute(None)
-        hook_init.assert_called_once_with(aws_conn_id='sagemaker_test_id')
 
     def test_parse_config_integers(self):
         self.sagemaker.parse_config_integers()

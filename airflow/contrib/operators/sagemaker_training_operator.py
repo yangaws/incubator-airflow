@@ -17,15 +17,12 @@
 # specific language governing permissions and limitations
 # under the License.
 
-import json
-
-from airflow.contrib.hooks.sagemaker_hook import SageMakerHook, parse_dict_integers
-from airflow.models import BaseOperator
+from airflow.contrib.operators.sagemaker_base_operator import SageMakerBaseOperator
 from airflow.utils.decorators import apply_defaults
 from airflow.exceptions import AirflowException
 
 
-class SageMakerTrainingOperator(BaseOperator):
+class SageMakerTrainingOperator(SageMakerBaseOperator):
     """
     Initiate a SageMaker training job
     This operator returns The ARN of the training job created in Amazon SageMaker
@@ -48,10 +45,6 @@ class SageMakerTrainingOperator(BaseOperator):
     :type max_ingestion_time: int
     """
 
-    template_fields = ['config']
-    template_ext = ()
-    ui_color = '#ededed'
-
     @apply_defaults
     def __init__(self,
                  config,
@@ -61,44 +54,36 @@ class SageMakerTrainingOperator(BaseOperator):
                  check_interval=30,
                  max_ingestion_time=None,
                  *args, **kwargs):
-        super(SageMakerTrainingOperator, self).__init__(*args, **kwargs)
+        super(SageMakerTrainingOperator, self).__init__(config=config,
+                                                        aws_conn_id=aws_conn_id,
+                                                        *args, **kwargs)
 
-        self.aws_conn_id = aws_conn_id
-        self.config = config
         self.wait_for_completion = wait_for_completion
         self.print_log = print_log
         self.check_interval = check_interval
         self.max_ingestion_time = max_ingestion_time
+        self.create_integer_fields()
 
-    def parse_config_integers(self):
-        # Parse the integer fields of training config to integers
-        parse_dict_integers(self.config, ['ResourceConfig', 'InstanceCount'])
-        parse_dict_integers(self.config, ['ResourceConfig', 'VolumeSizeInGB'])
-        parse_dict_integers(self.config, ['StoppingCondition', 'MaxRuntimeInSeconds'], False)
+    def create_integer_fields(self):
+        self.integer_fields = [
+            ['ResourceConfig', 'InstanceCount'],
+            ['ResourceConfig', 'VolumeSizeInGB'],
+            ['StoppingCondition', 'MaxRuntimeInSeconds']
+        ]
+
+    def expand_role(self):
+        if 'RoleArn' in self.config:
+            self.config['RoleArn'] = self.hook.expand_role(self.config['RoleArn'])
 
     def execute(self, context):
-        sagemaker = SageMakerHook(aws_conn_id=self.aws_conn_id)
-
-        self.log.info(
-            'Evaluating the config and doing required s3_operations'
-        )
-
-        self.config = sagemaker.configure_s3_resources(self.config)
-        self.parse_config_integers()
-        self.config['RoleArn'] = \
-            sagemaker.expand_role(self.config['RoleArn'])
-
-        self.log.info(
-            'After evaluation the config is:\n {}'.format(
-                json.dumps(self.config, sort_keys=True, indent=4, separators=(',', ': ')))
-        )
+        self.preprocess_config()
 
         self.log.info(
             'Creating SageMaker Training Job %s.'
             % self.config['TrainingJobName']
         )
 
-        response = sagemaker.create_training_job(
+        response = self.hook.create_training_job(
             self.config,
             wait_for_completion=self.wait_for_completion,
             print_log=self.print_log,
@@ -110,7 +95,7 @@ class SageMakerTrainingOperator(BaseOperator):
                 'Sagemaker Training Job creation failed: %s' % response)
         else:
             return {
-                'Training': sagemaker.describe_training_job(
+                'Training': self.hook.describe_training_job(
                     self.config['TrainingJobName']
                 )
             }

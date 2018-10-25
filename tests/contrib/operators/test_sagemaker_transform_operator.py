@@ -97,30 +97,6 @@ class TestSageMakerTransformOperator(unittest.TestCase):
             check_interval=5
         )
 
-    @mock.patch.object(SageMakerHook, 'get_conn')
-    @mock.patch.object(SageMakerHook, 'create_model')
-    @mock.patch.object(SageMakerHook, 'describe_model')
-    @mock.patch.object(SageMakerHook, 'create_transform_job')
-    @mock.patch.object(SageMakerHook, 'describe_transform_job')
-    @mock.patch.object(SageMakerHook, '__init__')
-    def test_hook_init(self, hook_init, mock_describe_transform, mock_transform,
-                       mock_describe_model, mock_model, mock_client):
-        mock_transform.return_value = {'TransformJobArn': 'testarn',
-                                       'ResponseMetadata':
-                                       {'HTTPStatusCode': 200}}
-        mock_model.return_value = {'ModelArn': 'testarn',
-                                   'ResponseMetadata':
-                                   {'HTTPStatusCode': 200}}
-        mock_describe_model.return_value = {
-            'ModelName': 'test-model'
-        }
-        mock_describe_transform.return_value = {
-            'TransformJobName': 'test-transform'
-        }
-        hook_init.return_value = None
-        self.sagemaker.execute(None)
-        hook_init.assert_called_once_with(aws_conn_id='sagemaker_test_id')
-
     def test_parse_config_integers(self):
         self.sagemaker.parse_config_integers()
         test_config = self.sagemaker.config['Transform']

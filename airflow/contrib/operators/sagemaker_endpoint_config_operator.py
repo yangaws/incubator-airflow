@@ -17,15 +17,12 @@
 # specific language governing permissions and limitations
 # under the License.
 
-import json
-
-from airflow.contrib.hooks.sagemaker_hook import SageMakerHook, parse_dict_integers
-from airflow.models import BaseOperator
+from airflow.contrib.operators.sagemaker_base_operator import SageMakerBaseOperator
 from airflow.utils.decorators import apply_defaults
 from airflow.exceptions import AirflowException
 
 
-class SageMakerEndpointConfigOperator(BaseOperator):
+class SageMakerEndpointConfigOperator(SageMakerBaseOperator):
 
     """
     Create a SageMaker endpoint config
@@ -37,52 +34,38 @@ class SageMakerEndpointConfigOperator(BaseOperator):
     :type aws_conn_id: str
     """
 
-    template_fields = ['config']
-    template_ext = ()
-    ui_color = '#ededed'
-
     @apply_defaults
     def __init__(self,
                  config,
                  aws_conn_id='sagemaker_default',
                  *args, **kwargs):
-        super(SageMakerEndpointConfigOperator, self).__init__(*args, **kwargs)
+        super(SageMakerEndpointConfigOperator, self).__init__(config=config,
+                                                              aws_conn_id=aws_conn_id,
+                                                              *args, **kwargs)
 
         self.aws_conn_id = aws_conn_id
         self.config = config
+        self.create_integer_fields()
 
-    def parse_config_integers(self):
-        # Parse the integer fields of endpoint config to integers
-        for variant in self.config['ProductionVariants']:
-            parse_dict_integers(variant, ['InitialInstanceCount'])
+    def create_integer_fields(self):
+        self.integer_fields = [
+            ['ProductionVariants', 'InitialInstanceCount']
+        ]
 
     def execute(self, context):
-        sagemaker = SageMakerHook(aws_conn_id=self.aws_conn_id)
-
-        self.log.info(
-            'Evaluating the config and doing required s3_operations'
-        )
-
-        self.config = sagemaker.configure_s3_resources(self.config)
-        self.parse_config_integers()
-
-        self.log.info(
-            'After evaluation the config is:\n {}'.format(
-                json.dumps(self.config, sort_keys=True, indent=4, separators=(',', ': '))
-            )
-        )
+        self.preprocess_config()
 
         self.log.info(
             'Creating SageMaker Endpoint Config %s.'
             % self.config['EndpointConfigName']
         )
-        response = sagemaker.create_endpoint_config(self.config)
+        response = self.hook.create_endpoint_config(self.config)
         if response['ResponseMetadata']['HTTPStatusCode'] != 200:
             raise AirflowException(
                 'Sagemaker endpoint config creation failed: %s' % response)
         else:
             return {
-                'EndpointConfig': sagemaker.describe_endpoint_config(
+                'EndpointConfig': self.hook.describe_endpoint_config(
                     self.config['EndpointConfigName']
                 )
             }

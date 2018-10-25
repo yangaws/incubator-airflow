@@ -17,15 +17,12 @@
 # specific language governing permissions and limitations
 # under the License.
 
-import json
-
-from airflow.contrib.hooks.sagemaker_hook import SageMakerHook
-from airflow.models import BaseOperator
+from airflow.contrib.operators.sagemaker_base_operator import SageMakerBaseOperator
 from airflow.utils.decorators import apply_defaults
 from airflow.exceptions import AirflowException
 
 
-class SageMakerModelOperator(BaseOperator):
+class SageMakerModelOperator(SageMakerBaseOperator):
 
     """
     Create a SageMaker model
@@ -37,48 +34,37 @@ class SageMakerModelOperator(BaseOperator):
     :type aws_conn_id: str
     """
 
-    template_fields = ['config']
-    template_ext = ()
-    ui_color = '#ededed'
-
     @apply_defaults
     def __init__(self,
                  config,
                  aws_conn_id='sagemaker_default',
                  *args, **kwargs):
-        super(SageMakerModelOperator, self).__init__(*args, **kwargs)
+        super(SageMakerModelOperator, self).__init__(config=config,
+                                                     aws_conn_id=aws_conn_id,
+                                                     *args, **kwargs)
 
         self.aws_conn_id = aws_conn_id
         self.config = config
 
+    def expand_role(self):
+        if 'ExecutionRoleArn' in self.config:
+            self.config['ExecutionRoleArn'] = \
+                self.hook.expand_role(self.config['ExecutionRoleArn'])
+
     def execute(self, context):
-        sagemaker = SageMakerHook(aws_conn_id=self.aws_conn_id)
-
-        self.log.info(
-            'Evaluating the config and doing required s3_operation'
-        )
-
-        self.config = sagemaker.configure_s3_resources(self.config)
-        self.config['ExecutionRoleArn'] = \
-            sagemaker.expand_role(self.config['ExecutionRoleArn'])
-
-        self.log.info(
-            'After evaluation the config is:\n {}'.format(
-                json.dumps(self.config, sort_keys=True, indent=4, separators=(',', ': '))
-            )
-        )
+        self.preprocess_config()
 
         self.log.info(
             'Creating SageMaker Model %s.'
             % self.config['ModelName']
         )
-        response = sagemaker.create_model(self.config)
+        response = self.hook.create_model(self.config)
         if response['ResponseMetadata']['HTTPStatusCode'] != 200:
             raise AirflowException(
                 'Sagemaker model creation failed: %s' % response)
         else:
             return {
-                'Model': sagemaker.describe_model(
+                'Model': self.hook.describe_model(
                     self.config['ModelName']
                 )
             }
