@@ -46,7 +46,7 @@ class SageMakerTuningOperator(SageMakerBaseOperator):
     @apply_defaults
     def __init__(self,
                  config,
-                 aws_conn_id='sagemaker_default',
+                 aws_conn_id='aws_default',
                  wait_for_completion=True,
                  check_interval=30,
                  max_ingestion_time=None,
@@ -64,16 +64,11 @@ class SageMakerTuningOperator(SageMakerBaseOperator):
 
     def create_integer_fields(self):
         self.integer_fields = [
-            ['HyperParameterTuningJobConfig', 'ResourceLimits',
-             'MaxNumberOfTrainingJobs'],
-            ['HyperParameterTuningJobConfig', 'ResourceLimits',
-             'MaxParallelTrainingJobs'],
-            ['TrainingJobDefinition', 'ResourceConfig',
-             'InstanceCount'],
-            ['TrainingJobDefinition', 'ResourceConfig',
-             'VolumeSizeInGB'],
-            ['TrainingJobDefinition', 'StoppingCondition',
-             'MaxRuntimeInSeconds']
+            ['HyperParameterTuningJobConfig', 'ResourceLimits', 'MaxNumberOfTrainingJobs'],
+            ['HyperParameterTuningJobConfig', 'ResourceLimits', 'MaxParallelTrainingJobs'],
+            ['TrainingJobDefinition', 'ResourceConfig', 'InstanceCount'],
+            ['TrainingJobDefinition', 'ResourceConfig', 'VolumeSizeInGB'],
+            ['TrainingJobDefinition', 'StoppingCondition', 'MaxRuntimeInSeconds']
         ]
 
     def expand_role(self):

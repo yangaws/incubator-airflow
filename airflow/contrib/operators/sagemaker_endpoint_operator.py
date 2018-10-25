@@ -52,7 +52,7 @@ class SageMakerEndpointOperator(SageMakerBaseOperator):
     @apply_defaults
     def __init__(self,
                  config,
-                 aws_conn_id='sagemaker_default',
+                 aws_conn_id='aws_default',
                  wait_for_completion=True,
                  check_interval=30,
                  max_ingestion_time=None,

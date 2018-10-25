@@ -37,7 +37,7 @@ class SageMakerEndpointConfigOperator(SageMakerBaseOperator):
     @apply_defaults
     def __init__(self,
                  config,
-                 aws_conn_id='sagemaker_default',
+                 aws_conn_id='aws_default',
                  *args, **kwargs):
         super(SageMakerEndpointConfigOperator, self).__init__(config=config,
                                                               aws_conn_id=aws_conn_id,
