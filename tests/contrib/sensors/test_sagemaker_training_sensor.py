@@ -64,14 +64,18 @@ class TestSageMakerTrainingSensor(unittest.TestCase):
         configuration.load_test_config()
 
     @mock.patch.object(SageMakerHook, 'get_conn')
+    @mock.patch.object(SageMakerHook, '__init__')
     @mock.patch.object(SageMakerHook, 'describe_training_job')
-    def test_sensor_with_failure(self, mock_describe_job, mock_client):
+    def test_sensor_with_failure(self, mock_describe_job, hook_init, mock_client):
+        hook_init.return_value = None
+
         mock_describe_job.side_effect = [DESCRIBE_TRAINING_FAILED_RESPONSE]
         sensor = SageMakerTrainingSensor(
             task_id='test_task',
             poke_interval=2,
             aws_conn_id='aws_test',
-            job_name='test_job_name'
+            job_name='test_job_name',
+            print_log=False
         )
         self.assertRaises(AirflowException, sensor.execute, None)
         mock_describe_job.assert_called_once_with('test_job_name')
