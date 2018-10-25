@@ -108,12 +108,19 @@ class TestSageMakerTransformOperator(unittest.TestCase):
                          int(test_config['MaxPayloadInMB']))
 
     @mock.patch.object(SageMakerHook, 'get_conn')
+    @mock.patch.object(SageMakerHook, 'get_iam_conn')
     @mock.patch.object(SageMakerHook, 'create_model')
     @mock.patch.object(SageMakerHook, 'create_transform_job')
-    def test_execute(self, mock_transform, mock_model, mock_client):
+    def test_execute(self, mock_transform, mock_model, mock_iam, mock_client):
         mock_transform.return_value = {'TransformJobArn': 'testarn',
                                        'ResponseMetadata':
                                        {'HTTPStatusCode': 200}}
+        mock_session = mock.Mock()
+        attrs = {'get_role.return_value':
+                 {'Role': {'Arn': 'arn:aws:role/{}'.format(role)}}
+                 }
+        mock_session.configure_mock(**attrs)
+        mock_iam.return_value = mock_session
         self.sagemaker.execute(None)
         mock_model.assert_called_once_with(create_model_params)
         mock_transform.assert_called_once_with(create_transform_params,
@@ -123,12 +130,20 @@ class TestSageMakerTransformOperator(unittest.TestCase):
                                                )
 
     @mock.patch.object(SageMakerHook, 'get_conn')
+    @mock.patch.object(SageMakerHook, 'get_iam_conn')
     @mock.patch.object(SageMakerHook, 'create_model')
     @mock.patch.object(SageMakerHook, 'create_transform_job')
-    def test_execute_with_failure(self, mock_transform, mock_model, mock_client):
+    def test_execute_with_failure(self, mock_transform, mock_model,
+                                  mock_iam, mock_client):
         mock_transform.return_value = {'TransformJobArn': 'testarn',
                                        'ResponseMetadata':
                                        {'HTTPStatusCode': 404}}
+        mock_session = mock.Mock()
+        attrs = {'get_role.return_value':
+                 {'Role': {'Arn': 'arn:aws:role/{}'.format(role)}}
+                 }
+        mock_session.configure_mock(**attrs)
+        mock_iam.return_value = mock_session
         self.assertRaises(AirflowException, self.sagemaker.execute, None)
 
 

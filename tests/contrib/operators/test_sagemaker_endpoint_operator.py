@@ -93,14 +93,21 @@ class TestSageMakerEndpointOperator(unittest.TestCase):
                              int(variant['InitialInstanceCount']))
 
     @mock.patch.object(SageMakerHook, 'get_conn')
+    @mock.patch.object(SageMakerHook, 'get_iam_conn')
     @mock.patch.object(SageMakerHook, 'create_model')
     @mock.patch.object(SageMakerHook, 'create_endpoint_config')
     @mock.patch.object(SageMakerHook, 'create_endpoint')
     def test_execute(self, mock_endpoint, mock_endpoint_config,
-                     mock_model, mock_client):
+                     mock_model, mock_iam, mock_client):
         mock_endpoint.return_value = {'EndpointArn': 'testarn',
                                       'ResponseMetadata':
                                       {'HTTPStatusCode': 200}}
+        mock_session = mock.Mock()
+        attrs = {'get_role.return_value':
+                 {'Role': {'Arn': 'arn:aws:role/{}'.format(role)}}
+                 }
+        mock_session.configure_mock(**attrs)
+        mock_iam.return_value = mock_session
         self.sagemaker.execute(None)
         mock_model.assert_called_once_with(create_model_params)
         mock_endpoint_config.assert_called_once_with(create_endpoint_config_params)
@@ -111,14 +118,21 @@ class TestSageMakerEndpointOperator(unittest.TestCase):
                                               )
 
     @mock.patch.object(SageMakerHook, 'get_conn')
+    @mock.patch.object(SageMakerHook, 'get_iam_conn')
     @mock.patch.object(SageMakerHook, 'create_model')
     @mock.patch.object(SageMakerHook, 'create_endpoint_config')
     @mock.patch.object(SageMakerHook, 'create_endpoint')
     def test_execute_with_failure(self, mock_endpoint, mock_endpoint_config,
-                                  mock_model, mock_client):
+                                  mock_model, mock_iam, mock_client):
         mock_endpoint.return_value = {'EndpointArn': 'testarn',
                                       'ResponseMetadata':
                                       {'HTTPStatusCode': 404}}
+        mock_session = mock.Mock()
+        attrs = {'get_role.return_value':
+                 {'Role': {'Arn': 'arn:aws:role/{}'.format(role)}}
+                 }
+        mock_session.configure_mock(**attrs)
+        mock_iam.return_value = mock_session
         self.assertRaises(AirflowException, self.sagemaker.execute, None)
 
 

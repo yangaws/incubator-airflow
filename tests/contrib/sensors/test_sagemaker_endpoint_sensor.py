@@ -105,5 +105,6 @@ class TestSageMakerEndpointSensor(unittest.TestCase):
         # make sure the hook was initialized with the specific params
         hook_init.assert_called_with(aws_conn_id='aws_test')
 
+
 if __name__ == '__main__':
     unittest.main()
