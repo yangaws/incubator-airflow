@@ -21,6 +21,7 @@
 import unittest
 import time
 from datetime import datetime
+from tzlocal import get_localzone
 
 try:
     from unittest import mock
@@ -255,25 +256,6 @@ class TestSageMakerHook(unittest.TestCase):
     def setUp(self):
         configuration.load_test_config()
 
-    @mock.patch.object(SageMakerHook, 'get_iam_conn')
-    def test_expand_role(self, mock_iam):
-        mock_session = mock.Mock()
-        some_role = 'some-role'
-        role_description = {
-            'Role': {
-                'Arn': 'test-arn'
-            }
-        }
-        attrs = {'get_role.return_value':
-                 role_description}
-        mock_session.configure_mock(**attrs)
-        mock_iam.return_value = mock_session
-        hook = SageMakerHook(aws_conn_id='sagemaker_test_conn_id')
-        arn = hook.expand_role(some_role)
-        mock_session.get_role.\
-            assert_called_once_with(RoleName=some_role)
-        self.assertEqual(arn, role_description['Role']['Arn'])
-
     @mock.patch.object(S3Hook, 'create_bucket')
     @mock.patch.object(S3Hook, 'load_file')
     def test_configure_s3_resources(self, mock_load_file, mock_create_bucket):
@@ -282,8 +264,8 @@ class TestSageMakerHook(unittest.TestCase):
             'Image': image,
             'Role': role
         }
-        self.assertEqual(evaluation_result,
-                         hook.configure_s3_resources(test_evaluation_config))
+        hook.configure_s3_resources(test_evaluation_config)
+        self.assertEqual(test_evaluation_config, evaluation_result)
         mock_create_bucket.assert_called_once_with(bucket_name=bucket)
         mock_load_file.assert_called_once_with(path, key, bucket)
 
@@ -559,7 +541,7 @@ class TestSageMakerHook(unittest.TestCase):
         self.assertFalse(changed)
 
     def test_secondary_training_status_message_status_changed(self):
-        now = datetime.now()
+        now = datetime.now(get_localzone())
         SECONDARY_STATUS_DESCRIPTION_1['LastModifiedTime'] = now
         expected = '{} {} - {}'.format(
             datetime.utcfromtimestamp(time.mktime(now.timetuple())).strftime('%Y-%m-%d %H:%M:%S'),
@@ -591,7 +573,6 @@ class TestSageMakerHook(unittest.TestCase):
         mock_log_client.return_value = mock_log_session
         hook = SageMakerHook(aws_conn_id='sagemaker_test_conn_id')
         response = hook.describe_training_job_with_log(job_name=job_name,
-                                                       non_terminal_states={'InProgress'},
                                                        positions={},
                                                        stream_names=[],
                                                        instance_count=1,
@@ -619,7 +600,6 @@ class TestSageMakerHook(unittest.TestCase):
         mock_log_client.return_value = mock_log_session
         hook = SageMakerHook(aws_conn_id='sagemaker_test_conn_id')
         response = hook.describe_training_job_with_log(job_name=job_name,
-                                                       non_terminal_states={'InProgress'},
                                                        positions={},
                                                        stream_names=[],
                                                        instance_count=1,
@@ -647,7 +627,6 @@ class TestSageMakerHook(unittest.TestCase):
         mock_log_client.return_value = mock_log_session
         hook = SageMakerHook(aws_conn_id='sagemaker_test_conn_id')
         response = hook.describe_training_job_with_log(job_name=job_name,
-                                                       non_terminal_states={'InProgress'},
                                                        positions={},
                                                        stream_names=[],
                                                        instance_count=1,

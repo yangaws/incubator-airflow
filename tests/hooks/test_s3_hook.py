@@ -22,13 +22,14 @@ import mock
 import tempfile
 import unittest
 
+from botocore.exceptions import NoCredentialsError
+
 from airflow import configuration
 
 try:
     from airflow.hooks.S3_hook import S3Hook
 except ImportError:
     S3Hook = None
-
 
 try:
     import boto3
@@ -52,6 +53,7 @@ class TestS3Hook(unittest.TestCase):
         self.assertEqual(parsed,
                          ("test", "this/is/not/a-real-key.txt"),
                          "Incorrect parsing of the s3 url")
+
     @mock_s3
     def test_check_for_bucket(self):
         hook = S3Hook(aws_conn_id=None)
@@ -61,6 +63,12 @@ class TestS3Hook(unittest.TestCase):
         self.assertTrue(hook.check_for_bucket('bucket'))
         self.assertFalse(hook.check_for_bucket('not-a-bucket'))
 
+    def test_check_for_bucket_raises_error_with_invalid_conn_id(self):
+        hook = S3Hook(aws_conn_id="does_not_exist")
+
+        with self.assertRaises(NoCredentialsError):
+            hook.check_for_bucket('bucket')
+
     @mock_s3
     def test_get_bucket(self):
         hook = S3Hook(aws_conn_id=None)
@@ -68,10 +76,29 @@ class TestS3Hook(unittest.TestCase):
         self.assertIsNotNone(b)
 
     @mock_s3
-    def test_create_bucket(self):
+    def test_create_bucket_default_region(self):
         hook = S3Hook(aws_conn_id=None)
-        hook.create_bucket('bucket')
-        self.assertTrue(hook.check_for_bucket('bucket'))
+        hook.create_bucket(bucket_name='new_bucket')
+        b = hook.get_bucket('new_bucket')
+        self.assertIsNotNone(b)
+
+    @mock_s3
+    def test_create_bucket_us_standard_region(self):
+        hook = S3Hook(aws_conn_id=None)
+        hook.create_bucket(bucket_name='new_bucket', region_name='us-east-1')
+        b = hook.get_bucket('new_bucket')
+        self.assertIsNotNone(b)
+        region = b.meta.client.get_bucket_location(Bucket=b.name).get('LocationConstraint', None)
+        self.assertEqual(region, 'us-east-1')
+
+    @mock_s3
+    def test_create_bucket_other_region(self):
+        hook = S3Hook(aws_conn_id=None)
+        hook.create_bucket(bucket_name='new_bucket', region_name='us-east-2')
+        b = hook.get_bucket('new_bucket')
+        self.assertIsNotNone(b)
+        region = b.meta.client.get_bucket_location(Bucket=b.name).get('LocationConstraint', None)
+        self.assertEqual(region, 'us-east-2')
 
     @mock_s3
     def test_check_for_prefix(self):
@@ -152,6 +179,12 @@ class TestS3Hook(unittest.TestCase):
         self.assertTrue(hook.check_for_key('s3://bucket//a'))
         self.assertFalse(hook.check_for_key('b', 'bucket'))
         self.assertFalse(hook.check_for_key('s3://bucket//b'))
+
+    def test_check_for_key_raises_error_with_invalid_conn_id(self):
+        hook = S3Hook(aws_conn_id="does_not_exist")
+
+        with self.assertRaises(NoCredentialsError):
+            hook.check_for_key('a', 'bucket')
 
     @mock_s3
     def test_get_key(self):
@@ -249,21 +282,19 @@ class TestS3Hook(unittest.TestCase):
         self.assertEqual(body, b'Content')
 
     @mock_s3
-    def test_load_file_obj(self):
+    def test_load_fileobj(self):
         hook = S3Hook(aws_conn_id=None)
         conn = hook.get_conn()
         # We need to create the bucket since this is all in Moto's 'virtual'
         # AWS account
         conn.create_bucket(Bucket="mybucket")
-
-        content = b"Content"
         with tempfile.TemporaryFile() as temp_file:
-            temp_file.write(content)
+            temp_file.write(b"Content")
             temp_file.seek(0)
             hook.load_file_obj(temp_file, "my_key", "mybucket")
             body = boto3.resource('s3').Object('mybucket', 'my_key').get()['Body'].read()
 
-            self.assertEqual(body, content)
+            self.assertEqual(body, b'Content')
 
 
 if __name__ == '__main__':
