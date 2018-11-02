@@ -25,7 +25,7 @@ from airflow.utils.decorators import apply_defaults
 class SageMakerEndpointSensor(SageMakerBaseSensor):
     """
     Asks for the state of the endpoint state until it reaches a terminal state.
-    If it fails the sensor errors, failing the task.
+    If it fails the sensor errors, the task fails.
 
     :param job_name: job_name of the endpoint instance to check the state of
     :type job_name: str

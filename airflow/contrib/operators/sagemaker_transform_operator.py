@@ -31,22 +31,16 @@ class SageMakerTransformOperator(SageMakerBaseOperator):
 
     :param config: The configuration necessary to start a transform job (templated)
     :type config: dict
-    :param model_config:
-        The configuration necessary to create a SageMaker model, the default is none
-        which means the SageMaker model used for the SageMaker transform job already exists.
-        If given, it will be used to create a SageMaker model before creating
-        the SageMaker transform job
-    :type model_config: dict
     :param aws_conn_id: The AWS connection ID to use.
     :type aws_conn_id: string
-    :param wait_for_completion: if the program should keep running until job finishes
+    :param wait_for_completion: Set to True to wait until the transform job finishes.
     :type wait_for_completion: bool
-    :param check_interval: if wait is set to be true, this is the time interval
-        in seconds which the operator will check the status of the transform job
+    :param check_interval: If wait is set to True, the time interval, in seconds,
+        that this operation waits to check the status of the transform job.
     :type check_interval: int
-    :param max_ingestion_time: if wait is set to be true, the operator will fail
-        if the transform job hasn't finish within the max_ingestion_time in seconds
-        (Caution: be careful to set this parameters because transform can take very long)
+    :param max_ingestion_time: If wait is set to True, the operation fails
+        if the transform job doesn't finish within max_ingestion_time seconds. If you
+        set this parameter to None, the operation does not timeout.
     :type max_ingestion_time: int
     """
 

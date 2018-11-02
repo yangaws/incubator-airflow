@@ -17,6 +17,7 @@
 # specific language governing permissions and limitations
 # under the License.
 
+from airflow.contrib.hooks.aws_hook import AwsHook
 from airflow.contrib.operators.sagemaker_base_operator import SageMakerBaseOperator
 from airflow.utils.decorators import apply_defaults
 from airflow.exceptions import AirflowException
@@ -37,31 +38,24 @@ class SageMakerModelOperator(SageMakerBaseOperator):
     @apply_defaults
     def __init__(self,
                  config,
-                 aws_conn_id='aws_default',
                  *args, **kwargs):
         super(SageMakerModelOperator, self).__init__(config=config,
-                                                     aws_conn_id=aws_conn_id,
                                                      *args, **kwargs)
 
-        self.aws_conn_id = aws_conn_id
         self.config = config
 
     def expand_role(self):
         if 'ExecutionRoleArn' in self.config:
-            self.config['ExecutionRoleArn'] = \
-                self.hook.expand_role(self.config['ExecutionRoleArn'])
+            hook = AwsHook(self.aws_conn_id)
+            self.config['ExecutionRoleArn'] = hook.expand_role(self.config['ExecutionRoleArn'])
 
     def execute(self, context):
         self.preprocess_config()
 
-        self.log.info(
-            'Creating SageMaker Model %s.'
-            % self.config['ModelName']
-        )
+        self.log.info('Creating SageMaker Model %s.', self.config['ModelName'])
         response = self.hook.create_model(self.config)
         if response['ResponseMetadata']['HTTPStatusCode'] != 200:
-            raise AirflowException(
-                'Sagemaker model creation failed: %s' % response)
+            raise AirflowException('Sagemaker model creation failed: %s' % response)
         else:
             return {
                 'Model': self.hook.describe_model(

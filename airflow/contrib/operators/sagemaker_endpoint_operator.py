@@ -17,6 +17,7 @@
 # specific language governing permissions and limitations
 # under the License.
 
+from airflow.contrib.hooks.aws_hook import AwsHook
 from airflow.contrib.operators.sagemaker_base_operator import SageMakerBaseOperator
 from airflow.utils.decorators import apply_defaults
 from airflow.exceptions import AirflowException
@@ -33,36 +34,29 @@ class SageMakerEndpointOperator(SageMakerBaseOperator):
     :type config: dict
     :param aws_conn_id: The AWS connection ID to use.
     :type aws_conn_id: str
-    :param wait_for_completion: if the operator should block
-        until training job finishes
+    :param wait_for_completion: Whether the operator should wait until the endpoint creation finishes.
     :type wait_for_completion: bool
-    :param check_interval: if wait is set to be true, this is the time interval
-        in seconds which the operator will check the status of the training job
+    :param check_interval: If wait is set to True, this is the time interval, in seconds, that this operation waits
+        before polling the status of the endpoint creation.
     :type check_interval: int
-    :param max_ingestion_time: if wait is set to be true, the operator will fail
-        if the training job hasn't finish within the max_ingestion_time in seconds
-        (Caution: be careful to set this parameters because training can take very long)
-        Setting it to None implies no timeout.
+    :param max_ingestion_time: If wait is set to True, this operation fails if the endpoint creation doesn't finish
+        within max_ingestion_time seconds. If you set this parameter to None it never times out.
     :type max_ingestion_time: int
-    :param operation: Whether to create an endpoint or update an endpoint. Must be
-        one of 'create' and 'update'.
+    :param operation: Whether to create an endpoint or update an endpoint. Must be either 'create or 'update'.
     :type operation: str
     """
 
     @apply_defaults
     def __init__(self,
                  config,
-                 aws_conn_id='aws_default',
                  wait_for_completion=True,
                  check_interval=30,
                  max_ingestion_time=None,
                  operation='create',
                  *args, **kwargs):
         super(SageMakerEndpointOperator, self).__init__(config=config,
-                                                        aws_conn_id=aws_conn_id,
                                                         *args, **kwargs)
 
-        self.aws_conn_id = aws_conn_id
         self.config = config
         self.wait_for_completion = wait_for_completion
         self.check_interval = check_interval
@@ -79,33 +73,24 @@ class SageMakerEndpointOperator(SageMakerBaseOperator):
     def expand_role(self):
         if 'Model' not in self.config:
             return
+        hook = AwsHook(self.aws_conn_id)
         config = self.config['Model']
         if 'ExecutionRoleArn' in config:
-            config['ExecutionRoleArn'] = \
-                self.hook.expand_role(config['ExecutionRoleArn'])
+            config['ExecutionRoleArn'] = hook.expand_role(config['ExecutionRoleArn'])
 
     def execute(self, context):
         self.preprocess_config()
 
-        model_info = self.config['Model']\
-            if 'Model' in self.config else None
-        endpoint_config_info = self.config['EndpointConfig']\
-            if 'EndpointConfig' in self.config else None
-        endpoint_info = self.config['Endpoint']\
-            if 'Endpoint' in self.config else self.config
+        model_info = self.config['Model'] if 'Model' in self.config else None
+        endpoint_config_info = self.config['EndpointConfig'] if 'EndpointConfig' in self.config else None
+        endpoint_info = self.config['Endpoint'] if 'Endpoint' in self.config else self.config
 
         if model_info:
-            self.log.info(
-                'Creating SageMaker model %s.'
-                % model_info['ModelName']
-            )
+            self.log.info('Creating SageMaker model %s.', model_info['ModelName'])
             self.hook.create_model(model_info)
 
         if endpoint_config_info:
-            self.log.info(
-                'Creating endpoint config %s.'
-                % endpoint_config_info['EndpointConfigName']
-            )
+            self.log.info('Creating endpoint config %s.', endpoint_config_info['EndpointConfigName'])
             self.hook.create_endpoint_config(endpoint_config_info)
 
         if self.operation == 'create':
@@ -115,13 +100,9 @@ class SageMakerEndpointOperator(SageMakerBaseOperator):
             sagemaker_operation = self.hook.update_endpoint
             log_str = 'Updating'
         else:
-            raise AirflowException(
-                'Invalid value! '
-                'Argument operation has to be one of "create" and "update"')
+            raise AirflowException('Invalid value! Argument operation has to be one of "create" and "update"')
 
-        self.log.info(
-            '{} SageMaker endpoint {}.'.format(log_str, endpoint_info['EndpointName'])
-        )
+        self.log.info('{} SageMaker endpoint {}.'.format(log_str, endpoint_info['EndpointName']))
 
         response = sagemaker_operation(
             endpoint_info,

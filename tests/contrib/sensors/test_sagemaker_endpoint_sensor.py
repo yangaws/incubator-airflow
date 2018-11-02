@@ -72,7 +72,7 @@ class TestSageMakerEndpointSensor(unittest.TestCase):
         mock_describe.side_effect = [DESCRIBE_ENDPOINT_FAILED_RESPONSE]
         sensor = SageMakerEndpointSensor(
             task_id='test_task',
-            poke_interval=2,
+            poke_interval=1,
             aws_conn_id='aws_test',
             endpoint_name='test_job_name'
         )
@@ -92,7 +92,7 @@ class TestSageMakerEndpointSensor(unittest.TestCase):
         ]
         sensor = SageMakerEndpointSensor(
             task_id='test_task',
-            poke_interval=2,
+            poke_interval=1,
             aws_conn_id='aws_test',
             endpoint_name='test_job_name'
         )
